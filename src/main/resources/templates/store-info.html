@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Store Information</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="#">POS System</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/">POS</a>
+            <a class="nav-link" href="/products">Products</a>
+            <a class="nav-link" href="/reports">Reports</a>
+            <a class="nav-link active" href="/store">Store Info</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <!-- Success/Error Messages -->
+    <div th:if="${success}" class="alert alert-success alert-dismissible fade show">
+        <span th:text="${success}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    <div th:if="${error}" class="alert alert-danger alert-dismissible fade show">
+        <span th:text="${error}"></span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h5>Store Information</h5>
+        </div>
+        <div class="card-body">
+            <form th:action="@{/store}" th:object="${storeInfo}" method="post">
+                <!-- Basic Store Info -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="storeName" class="form-label">Store Name *</label>
+                        <input type="text" class="form-control" id="storeName" th:field="*{storeName}"
+                               placeholder="Enter store name" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="phoneNumber" class="form-label">Phone Number</label>
+                        <input type="text" class="form-control" id="phoneNumber" th:field="*{phoneNumber}"
+                               placeholder="Enter phone number">
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="address" class="form-label">Address</label>
+                    <textarea class="form-control" id="address" th:field="*{address}"
+                              placeholder="Enter store address" rows="3"></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" class="form-control" id="email" th:field="*{email}"
+                           placeholder="Enter email address">
+                </div>
+
+                <hr>
+
+                <!-- API Configuration -->
+                <h6 class="mb-3">Payment Gateway Configuration</h6>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="apiUrl" class="form-label">API URL</label>
+                        <input type="url" class="form-control" id="apiUrl" th:field="*{apiUrl}"
+                               placeholder="https://api.example.com">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="secretKey" class="form-label">Secret Key</label>
+                        <input type="password" class="form-control" id="secretKey" th:field="*{secretKey}"
+                               placeholder="Enter secret key">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="merchantId" class="form-label">Merchant ID</label>
+                        <input type="text" class="form-control" id="merchantId" th:field="*{merchantId}"
+                               placeholder="Enter merchant ID">
+                    </div>
+                    <div class="col-md-6">
+                        <label for="terminalId" class="form-label">Terminal ID</label>
+                        <input type="text" class="form-control" id="terminalId" th:field="*{terminalId}"
+                               placeholder="Enter terminal ID">
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">Save Store Information</button>
+                    <a href="/" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

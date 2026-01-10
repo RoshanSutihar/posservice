@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>POS System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .cart-item { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .total-section { background: #f8f9fa; padding: 20px; border-radius: 5px; }
+        .payment-modal { max-width: 500px; }
+        .quick-product { cursor: pointer; transition: background-color 0.2s; }
+        .quick-product:hover { background-color: #f8f9fa; }
+        .qr-container { text-align: center; padding: 20px; }
+        .qr-code { max-width: 200px; margin: 0 auto; }
+        .payment-status { margin-top: 15px; }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="#">POS System</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/">POS</a>
+            <a class="nav-link" href="/products">Products</a>
+            <a class="nav-link" href="/reports">Reports</a>
+            <a class="nav-link" href="/store">Store Info</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Scan/Add Product</h5>
+                </div>
+                <div class="card-body">
+                    <form id="addProductForm">
+                        <div class="mb-3">
+                            <label for="upc" class="form-label">UPC/Barcode</label>
+                            <input type="text" class="form-control" id="upc" placeholder="Scan or enter UPC">
+                        </div>
+                        <button type="button" class="btn btn-primary w-100" onclick="addProductByUPC()">
+                            Add Product
+                        </button>
+                    </form>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">Quick Products</label>
+                        <div id="quickProducts">
+                            <div class="text-center">
+                                <div class="spinner-border spinner-border-sm" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                Loading products...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5>Shopping Cart</h5>
+                    <button class="btn btn-sm btn-outline-danger" onclick="clearCart()">Clear Cart</button>
+                </div>
+                <div class="card-body">
+                    <div id="cartItems">
+                        <div class="text-muted text-center">
+                            Cart is empty
+                        </div>
+                    </div>
+
+                    <div class="total-section mt-4">
+                        <div class="d-flex justify-content-between mb-2">
+                            <strong>Subtotal:</strong>
+                            <span id="subtotal">$0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <strong>Tax:</strong>
+                            <span id="tax">$0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <strong>Total:</strong>
+                            <span id="total" class="h5">$0.00</span>
+                        </div>
+                        <button class="btn btn-success btn-lg w-100" onclick="showPaymentModal()">
+                            Process Payment
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog payment-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Process Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-4">
+                    <h4 id="paymentTotal">Total: $0.00</h4>
+                </div>
+
+                <form id="paymentForm">
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method</label>
+                        <select class="form-select" id="paymentMethod" onchange="togglePaymentFields()">
+                            <option value="CASH">Cash</option>
+                            <option value="QR">QR Payment</option>
+                        </select>
+                    </div>
+
+                    <div id="cashFields">
+                        <div class="mb-3">
+                            <label for="tenderedAmount" class="form-label">Amount Tendered</label>
+                            <input type="number" class="form-control" id="tenderedAmount" step="0.01"
+                                   onchange="calculateChange()">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Change Due</label>
+                            <input type="text" class="form-control" id="changeDue" readonly>
+                        </div>
+                    </div>
+
+                    <div id="qrFields" style="display: none;">
+                        <div class="qr-container">
+                            <div id="qrCode"></div>
+                            <div class="payment-status">
+                                <div id="paymentStatus" class="alert alert-info">
+                                    Scan QR code to pay
+                                </div>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="checkQRPaymentStatus()">
+                                    Check Payment Status
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="completeSaleBtn" onclick="processPayment()">Complete Sale</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
+<script>
+
+    let cart = [];
+    const TAX_RATE = 0.08;
+    let currentSessionId = null;
+    let paymentCheckInterval = null;
+    let paymentCompletionData = null;
+    let receiptModalInstance = null;
+
+    const MERCHANT_CONFIG = {
+        merchantId: "DEMO_COMPANY_1765647042925",
+        secretKey: "CYBH14PNmf2xNPao2B/wH4Z1C3F2eMx6CSv7ZUpTU0M"
+    };
+
+    function generateSignature(merchantId, requestData, secretKey) {
+
+
+        const ordered = {
+            terminalId: requestData.terminalId,
+            amount: Number(requestData.amount),
+            transactionRef: requestData.transactionRef,
+            callbackUrl: requestData.callbackUrl
+        };
+
+        const jsonString = JSON.stringify(ordered);
+
+        const dataToSign = merchantId + jsonString;
+
+        const key = CryptoJS.enc.Base64.parse(secretKey);
+        const signature = CryptoJS.HmacSHA256(dataToSign, key);
+
+        return CryptoJS.enc.Base64.stringify(signature);
+    }
+
+
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed bottom-0 end-0 p-3';
+        toast.style.zIndex = '11';
+        toast.innerHTML = `
+            <div class="toast show" role="alert">
+                <div class="toast-body">
+                    ${message}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+
+
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadQuickProducts();
+        document.getElementById('upc').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addProductByUPC();
+            }
+        });
+
+
+        document.getElementById('paymentModal').addEventListener('hidden.bs.modal', function() {
+            document.getElementById('paymentMethod').value = 'CASH';
+            document.getElementById('cashFields').style.display = 'block';
+            document.getElementById('qrFields').style.display = 'none';
+            document.getElementById('tenderedAmount').value = '';
+            document.getElementById('changeDue').value = '';
+            document.getElementById('qrCode').innerHTML = '';
+            document.getElementById('paymentStatus').className = 'alert alert-info';
+            document.getElementById('paymentStatus').textContent = 'Scan QR code to pay';
+            stopPaymentChecking();
+            currentSessionId = null;
+            paymentCompletionData = null;
+            togglePaymentFields();
+        });
+    });
+
+
+
+    function loadQuickProducts() {
+
+        fetch('/products/all')
+            .then(response => response.json())
+            .then(displayQuickProducts)
+            .catch(error => {
+                console.error('Error loading products:', error);
+                document.getElementById('quickProducts').innerHTML = '<div class="text-danger">Error loading products</div>';
+            });
+    }
+
+    function displayQuickProducts(products) {
+        const quickProductsDiv = document.getElementById('quickProducts');
+        if (products.length === 0) {
+            quickProductsDiv.innerHTML = '<div class="text-muted">No products found</div>';
+            return;
+        }
+        let html = '';
+        products.forEach(product => {
+            html += `
+                <div class="quick-product border rounded p-2 mb-2" onclick="addProductToCart(${product.id})">
+                    <div class="fw-bold">${product.name}</div>
+                    <div class="small text-muted">UPC: ${product.upc}</div>
+                    <div class="text-success">$${parseFloat(product.price).toFixed(2)}</div>
+                </div>
+            `;
+        });
+        quickProductsDiv.innerHTML = html;
+    }
+
+    function addProductToCart(productId) {
+        fetch(`/products/${productId}`)
+            .then(response => response.json())
+            .then(addToCart)
+            .catch(error => {
+                console.error('Error fetching product:', error);
+                alert('Error adding product to cart');
+            });
+    }
+
+    function addProductByUPC() {
+        const upc = document.getElementById('upc').value.trim();
+        if (!upc) {
+            alert('Please enter a UPC code');
+            return;
+        }
+        const button = document.querySelector('#addProductForm button');
+        const originalText = button.textContent;
+        button.textContent = 'Searching...';
+        button.disabled = true;
+
+        fetch(`/products/by-upc/${encodeURIComponent(upc)}`)
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 404) throw new Error('Product not found');
+                    throw new Error('Network error');
+                }
+                return response.json();
+            })
+            .then(product => {
+                addToCart(product);
+                document.getElementById('upc').value = '';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(error.message || 'Error finding product');
+            })
+            .finally(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            });
+    }
+
+    function addToCart(product) {
+        const existingItem = cart.find(item => item.id === product.id);
+        if (existingItem) {
+            existingItem.quantity++;
+        } else {
+            cart.push({
+                id: product.id,
+                upc: product.upc,
+                name: product.name,
+                price: parseFloat(product.price),
+                quantity: 1
+            });
+        }
+        updateCartDisplay();
+        showToast(`${product.name} added to cart`);
+    }
+
+    function updateCartDisplay() {
+        const cartItems = document.getElementById('cartItems');
+        const subtotalElement = document.getElementById('subtotal');
+        const taxElement = document.getElementById('tax');
+        const totalElement = document.getElementById('total');
+
+        let subtotal = 0;
+        cartItems.innerHTML = '';
+
+        if (cart.length === 0) {
+            cartItems.innerHTML = '<div class="text-muted text-center">Cart is empty</div>';
+        } else {
+            cart.forEach((item, index) => {
+                const itemTotal = item.price * item.quantity;
+                subtotal += itemTotal;
+
+                const itemElement = document.createElement('div');
+                itemElement.className = 'cart-item';
+                itemElement.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${item.name}</strong><br>
+                            <small class="text-muted">UPC: ${item.upc} | $${item.price.toFixed(2)} each</small>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="updateQuantity(${index}, -1)">-</button>
+                            <span class="mx-2">${item.quantity}</span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="updateQuantity(${index}, 1)">+</button>
+                            <span class="mx-3">$${itemTotal.toFixed(2)}</span>
+                            <button class="btn btn-sm btn-outline-danger" onclick="removeFromCart(${index})">×</button>
+                        </div>
+                    </div>
+                `;
+                cartItems.appendChild(itemElement);
+            });
+        }
+
+        const tax = subtotal * TAX_RATE;
+        const total = subtotal + tax;
+
+        subtotalElement.textContent = `$${subtotal.toFixed(2)}`;
+        taxElement.textContent = `$${tax.toFixed(2)}`;
+        totalElement.textContent = `$${total.toFixed(2)}`;
+    }
+
+    function updateQuantity(index, change) {
+        cart[index].quantity += change;
+        if (cart[index].quantity <= 0) {
+            cart.splice(index, 1);
+        }
+        updateCartDisplay();
+    }
+
+    function removeFromCart(index) {
+        const itemName = cart[index].name;
+        cart.splice(index, 1);
+        updateCartDisplay();
+        showToast(`${itemName} removed from cart`);
+    }
+
+    function clearCart() {
+        if (cart.length === 0) return;
+        if (confirm('Are you sure you want to clear the cart?')) {
+            cart = [];
+            updateCartDisplay();
+            showToast('Cart cleared');
+        }
+    }
+
+
+
+    function showPaymentModal() {
+        if (cart.length === 0) {
+            alert('Cart is empty');
+            return;
+        }
+
+        const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+        document.getElementById('paymentTotal').textContent = `Total: $${total.toFixed(2)}`;
+
+
+        document.getElementById('paymentMethod').value = 'CASH';
+        document.getElementById('tenderedAmount').value = '';
+        document.getElementById('changeDue').value = '';
+        document.getElementById('qrCode').innerHTML = '';
+        document.getElementById('paymentStatus').className = 'alert alert-info';
+        document.getElementById('paymentStatus').textContent = 'Scan QR code to pay';
+
+        stopPaymentChecking();
+        currentSessionId = null;
+        paymentCompletionData = null;
+
+        const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+        modal.show();
+    }
+
+    function togglePaymentFields() {
+        const method = document.getElementById('paymentMethod').value;
+        document.getElementById('cashFields').style.display = method === 'CASH' ? 'block' : 'none';
+        document.getElementById('qrFields').style.display = method === 'QR' ? 'block' : 'none';
+
+        if (method === 'QR') {
+
+            document.getElementById('qrCode').innerHTML = '';
+            document.getElementById('paymentStatus').className = 'alert alert-info';
+            document.getElementById('paymentStatus').textContent = 'Generating QR code...';
+            generateQRPayment();
+        } else {
+            stopPaymentChecking();
+        }
+    }
+
+
+    function generateQRPayment() {
+        const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+        const transactionRef = 'TXN_' + Date.now();
+
+        const requestData = {
+            amount: Number(total.toFixed(2)),
+            callbackUrl: "https://mystore.com/payment-callback",
+            terminalId: "POS_TERMINAL_001",
+            transactionRef: transactionRef
+        };
+
+        const signature = generateSignature(MERCHANT_CONFIG.merchantId, requestData, MERCHANT_CONFIG.secretKey);
+        const requestBodyToSend = JSON.stringify(requestData);
+
+        fetch('http://localhost:8091/api/v1/payments/initiate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Merchant-ID': MERCHANT_CONFIG.merchantId,
+                'X-Signature': signature
+            },
+            body: requestBodyToSend
+        })
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('paymentStatus');
+            const qrCodeContainer = document.getElementById('qrCode');
+            qrCodeContainer.innerHTML = '';
+
+            if (data.success) {
+                currentSessionId = data.sessionId;
+
+
+                if (!data.qrData || typeof data.qrData !== 'string' || data.qrData.trim() === '') {
+                    console.error("Server returned success but missing or invalid 'qrData'.", data);
+                    qrCodeContainer.innerHTML = '<div class="text-danger">Server Error: Missing QR data.</div>';
+                    statusElement.className = 'alert alert-danger';
+                    statusElement.textContent = 'Server Error: Missing QR data.';
+                    return;
+                }
+
+
+                const canvas = document.createElement('canvas');
+                qrCodeContainer.appendChild(canvas);
+
+                QRCode.toCanvas(canvas, data.qrData, function (error) {
+                    if (error) {
+                        console.error('QR Code generation failed:', error);
+                        qrCodeContainer.innerHTML = `<div class="text-danger">Failed to generate QR: ${error.message}</div>`;
+                        statusElement.textContent = 'Failed to generate QR.';
+                    } else {
+                        statusElement.className = 'alert alert-info';
+                        statusElement.textContent = 'QR Code generated. Waiting for payment...';
+                        startPaymentChecking();
+                    }
+                });
+            } else {
+                statusElement.className = 'alert alert-danger';
+                statusElement.textContent = 'Failed to generate QR: ' + data.message;
+                stopPaymentChecking();
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('paymentStatus').className = 'alert alert-danger';
+            document.getElementById('paymentStatus').textContent = 'Error communicating with payment service';
+            stopPaymentChecking();
+        });
+    }
+
+    function startPaymentChecking() {
+        stopPaymentChecking();
+        paymentCheckInterval = setInterval(checkQRPaymentStatus, 3000);
+    }
+
+    function stopPaymentChecking() {
+        if (paymentCheckInterval) {
+            clearInterval(paymentCheckInterval);
+            paymentCheckInterval = null;
+        }
+    }
+
+    function checkQRPaymentStatus() {
+        if (!currentSessionId) return;
+
+        fetch(`http://localhost:8091/api/v1/payments/status/${currentSessionId}`)
+            .then(response => response.json())
+            .then(data => {
+                const statusElement = document.getElementById('paymentStatus');
+                statusElement.textContent = `Waiting for payment... (Current Status: ${data.status})`;
+
+                if (data.status === 'COMPLETED') {
+                    console.log('Payment successful data:', data);
+                    paymentCompletionData = data;
+                    statusElement.className = 'alert alert-success';
+                    statusElement.textContent = 'Payment Completed!';
+                    stopPaymentChecking();
+                    processTransaction('QR');
+                } else if (data.status === 'FAILED') {
+                    statusElement.className = 'alert alert-danger';
+                    statusElement.textContent = 'Payment Failed';
+                    stopPaymentChecking();
+                } else if (data.status === 'CANCELLED') {
+                    statusElement.className = 'alert alert-warning';
+                    statusElement.textContent = 'Payment Cancelled';
+                    stopPaymentChecking();
+                } else {
+                    statusElement.className = 'alert alert-info';
+                }
+            })
+            .catch(error => {
+                console.error('Error checking payment status:', error);
+                document.getElementById('paymentStatus').className = 'alert alert-danger';
+                document.getElementById('paymentStatus').textContent = 'Error checking payment status.';
+                stopPaymentChecking();
+            });
+    }
+
+    function processPayment() {
+        const paymentMethod = document.getElementById('paymentMethod').value;
+
+        if (paymentMethod === 'CASH') {
+            const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+            const tendered = parseFloat(document.getElementById('tenderedAmount').value) || 0;
+            if (tendered < total) {
+                alert('Insufficient amount tendered');
+                return;
+            }
+
+            paymentCompletionData = {
+                amount: total,
+                currency: 'USD',
+                status: 'COMPLETED',
+                merchantId: MERCHANT_CONFIG.merchantId,
+                transactionRef: 'CASH_' + Date.now(),
+                createdAt: new Date().toISOString()
+            };
+            processTransaction('CASH');
+        } else if (paymentMethod === 'QR') {
+
+            alert('Waiting for QR payment to complete. Please check the status.');
+        }
+    }
+
+    function processTransaction(paymentMethod) {
+        const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+
+        const transactionData = {
+            cartItems: cart.map(item => ({
+                productId: item.id,
+                upc: item.upc,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity
+            })),
+            totalAmount: total,
+            paymentMethod: paymentMethod,
+            qrSessionId: currentSessionId
+        };
+
+        const completeButton = document.getElementById('completeSaleBtn');
+        completeButton.textContent = 'Processing...';
+        completeButton.disabled = true;
+
+        fetch('/complete-sale', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(transactionData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Transaction completion data:', data);
+                showReceipt(data.transactionId, transactionData, paymentCompletionData);
+                // @ts-ignore
+                bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide();
+                cart = [];
+                updateCartDisplay();
+                showToast('Sale completed successfully!');
+                currentSessionId = null;
+                paymentCompletionData = null;
+                stopPaymentChecking();
+            } else {
+                throw new Error(data.error || 'Unknown error occurred');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error processing sale: ' + error.message);
+        })
+        .finally(() => {
+            completeButton.textContent = 'Complete Sale';
+            completeButton.disabled = false;
+        });
+    }
+
+
+
+    function showReceipt(transactionId, transactionData, paymentData) {
+        const totalAmount = transactionData.totalAmount;
+        const subtotal = totalAmount / (1 + TAX_RATE);
+        const tax = totalAmount - subtotal;
+        const paymentMethod = transactionData.paymentMethod;
+        const merchantId = paymentData ? paymentData.merchantId : MERCHANT_CONFIG.merchantId;
+        const maskedMerchantId = '******' + merchantId.slice(-4);
+        const transactionRef = paymentData ? paymentData.transactionRef : 'N/A';
+        const createdAt = paymentData ? new Date(paymentData.createdAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const amount = paymentData ? paymentData.amount.toFixed(2) : totalAmount.toFixed(2);
+
+        const sessionId = paymentData && paymentData.sessionId ? paymentData.sessionId : 'N/A';
+
+
+        const receiptText = `MY POS STORE
+Invoice date ${createdAt}
+
+SALE ${paymentMethod.toUpperCase()}
+
+QR Payment Completed
+Apply Method: QR Scan
+Merchant ID: ${maskedMerchantId}
+Transaction Ref: ${transactionRef}
+Invoice: ${transactionId}
+Result: APPROVED
+Approved Amount: USD $${amount}
+
+${paymentMethod} Payment
+Session: ${sessionId}
+
+Transaction ID: ${transactionId}
+
+Thanks for shopping with us!
+
+Merchant Copy`;
+
+        const receiptContent = `
+            <div class="receipt text-left">
+                <h4>Sale Completed</h4>
+                <pre style="white-space: pre-wrap; font-family: monospace; background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; line-height: 1.2;">${receiptText}</pre>
+                <hr>
+                <h5>Items:</h5>
+                ${transactionData.cartItems.map(item => `
+                <div class="d-flex justify-content-between">
+                    <span>${item.name} x${item.quantity}</span>
+                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                </div>
+                `).join('')}
+                <hr>
+                <button class="btn btn-primary mt-2" onclick="printReceipt()">Print Receipt</button>
+                <button class="btn btn-secondary mt-2" data-bs-dismiss="modal">Close</button>
+            </div>
+        `;
+
+        const receiptModal = document.createElement('div');
+        receiptModal.className = 'modal fade';
+        receiptModal.innerHTML = `
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Sale Receipt</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        ${receiptContent}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(receiptModal);
+        // @ts-ignore
+        receiptModalInstance = new bootstrap.Modal(receiptModal);
+        receiptModalInstance.show();
+
+        receiptModal.addEventListener('hidden.bs.modal', function () {
+            document.body.removeChild(receiptModal);
+            receiptModalInstance = null;
+        });
+    }
+
+    function printReceipt() {
+        window.print();
+    }
+
+    function closeReceipt() {
+        if (receiptModalInstance) {
+            receiptModalInstance.hide();
+        }
+    }
+
+    function calculateChange() {
+        const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+        const tendered = parseFloat(document.getElementById('tenderedAmount').value) || 0;
+        const change = tendered - total;
+        document.getElementById('changeDue').value = change >= 0 ? `$${change.toFixed(2)}` : 'Insufficient';
+
+
+        document.getElementById('completeSaleBtn').disabled = change < 0;
+    }
+</script>
+</body>
+</html>
