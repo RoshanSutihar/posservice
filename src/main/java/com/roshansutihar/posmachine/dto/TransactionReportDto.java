@@ -18,4 +18,6 @@ public class TransactionReportDto {
     private TransactionType transactionType;
     private BigDecimal totalAmount;
     private List<TransactionItemDto> transactionItems;
+    private String paymentMethod; // Add this
+    private QrPaymentDetailsDto qrPaymentDetails;
 }

@@ -1,9 +1,7 @@
 package com.roshansutihar.posmachine.resource;
 
-import com.roshansutihar.posmachine.entity.Payment;
-import com.roshansutihar.posmachine.entity.Product;
-import com.roshansutihar.posmachine.entity.TransactionItem;
-import com.roshansutihar.posmachine.entity.Transactions;
+import com.roshansutihar.posmachine.entity.*;
+import com.roshansutihar.posmachine.enums.QrPaymentStatus;
 import com.roshansutihar.posmachine.enums.TransactionType;
 import com.roshansutihar.posmachine.repository.*;
 import com.roshansutihar.posmachine.request.CartItem;
@@ -29,6 +27,7 @@ public class PosController {
     private final TransactionsRepository transactionsRepository;
     private final PaymentRepository paymentRepository;
     private final TransactionItemRepository transactionItemRepository;
+    private final QrPaymentRepository qrPaymentRepository;
 
     @GetMapping
     public String posPage(Model model) {
@@ -42,7 +41,7 @@ public class PosController {
     @ResponseBody
     public ResponseEntity<?> completeSale(@RequestBody SaleRequest saleRequest) {
         try {
-
+            // 1. Create transaction items
             List<TransactionItem> transactionItems = new ArrayList<>();
 
             for (CartItem cartItem : saleRequest.getCartItems()) {
@@ -59,7 +58,7 @@ public class PosController {
                 transactionItems.add(item);
             }
 
-
+            // 2. Create transaction
             Transactions transaction = Transactions.builder()
                     .transactionType(TransactionType.SALE)
                     .totalAmount(saleRequest.getTotalAmount())
@@ -67,14 +66,14 @@ public class PosController {
                     .transactionItems(transactionItems)
                     .build();
 
-
+            // Link items to transaction
             Transactions finalTransaction = transaction;
             transactionItems.forEach(item -> item.setTransaction(finalTransaction));
 
-
+            // Save transaction
             transaction = transactionsRepository.save(transaction);
 
-
+            // 3. Create payment
             Payment payment = Payment.builder()
                     .transaction(transaction)
                     .paymentMethod(saleRequest.getPaymentMethod())
@@ -82,7 +81,23 @@ public class PosController {
                     .paymentDate(OffsetDateTime.now())
                     .build();
 
-            paymentRepository.save(payment);
+            payment = paymentRepository.save(payment);
+
+            // 4. If QR payment, create QR payment record
+            if ("QR".equals(saleRequest.getPaymentMethod()) && saleRequest.getQrPaymentDetails() != null) {
+                QrPayment qrPayment = QrPayment.builder()
+                        .payment(payment) // Link to payment
+                        .terminalId(saleRequest.getQrPaymentDetails().getTerminalId())
+                        .merchantId(saleRequest.getQrPaymentDetails().getMerchantId())
+                        .sessionId(saleRequest.getQrPaymentDetails().getSessionId())
+                        .paidAmount(saleRequest.getTotalAmount())
+                        .transactionReference(saleRequest.getQrPaymentDetails().getTransactionReference())
+                        .qrStatus(QrPaymentStatus.COMPLETED)
+                        .build();
+
+                // Save QR payment (you'll need QrPaymentRepository)
+                qrPaymentRepository.save(qrPayment);
+            }
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
@@ -91,7 +106,7 @@ public class PosController {
             ));
 
         } catch (Exception e) {
-            e.printStackTrace(); // Add this for debugging
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "success", false,

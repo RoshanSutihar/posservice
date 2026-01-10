@@ -23,4 +23,6 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("start") OffsetDateTime start,
             @Param("end") OffsetDateTime end
     );
+
+
 }

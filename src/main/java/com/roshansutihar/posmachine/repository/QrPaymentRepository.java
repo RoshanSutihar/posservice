@@ -21,4 +21,5 @@ public interface QrPaymentRepository extends JpaRepository<QrPayment, Long> {
     Optional<QrPayment> findByTransactionId(@Param("transactionId") Long transactionId);
 
     boolean existsBySessionId(String sessionId);
+    QrPayment findByPaymentId(Long paymentId);
 }

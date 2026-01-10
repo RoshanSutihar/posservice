@@ -4,6 +4,29 @@
     <meta charset="UTF-8">
     <title>Sales Reports</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .qr-details {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 8px;
+            margin-top: 5px;
+            font-size: 0.85em;
+        }
+        .qr-badge {
+            background-color: #17a2b8;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+        }
+        .cash-badge {
+            background-color: #28a745;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+        }
+    </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -60,6 +83,14 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-md-4">
+                    <div class="card text-white bg-info">
+                        <div class="card-body">
+                            <h5>QR Payments</h5>
+                            <h3 th:text="${#aggregates.sum(transactions.![qrPaymentDetails != null ? 1 : 0])}">0</h3>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Transactions Table -->
@@ -71,7 +102,9 @@
                         <th>Date</th>
                         <th>Type</th>
                         <th>Total Amount</th>
+                        <th>Payment Method</th>
                         <th>Items</th>
+                        <th>QR Details</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -86,6 +119,17 @@
                         </td>
                         <td th:text="'$' + ${#numbers.formatDecimal(transaction.totalAmount, 1, 2)}">Amount</td>
                         <td>
+                            <span th:if="${transaction.paymentMethod == 'QR'}" class="qr-badge">
+                                QR
+                            </span>
+                            <span th:if="${transaction.paymentMethod == 'CASH'}" class="cash-badge">
+                                CASH
+                            </span>
+                            <span th:if="${transaction.paymentMethod == null}" class="text-muted">
+                                N/A
+                            </span>
+                        </td>
+                        <td>
                             <div th:each="item : ${transaction.transactionItems}">
                                 <small th:text="${item.productName} + ' x ' + ${item.quantity} + ' - $' + ${#numbers.formatDecimal(item.subtotal, 1, 2)}">
                                     Item details
@@ -95,9 +139,34 @@
                                 <small class="text-muted">No items</small>
                             </div>
                         </td>
+                        <td>
+                            <div th:if="${transaction.qrPaymentDetails != null}" class="qr-details">
+                                <div><strong>Ref:</strong>
+                                    <span th:text="${transaction.qrPaymentDetails.transactionReference}">N/A</span>
+                                </div>
+                                <div><strong>Terminal:</strong>
+                                    <span th:text="${transaction.qrPaymentDetails.terminalId}">N/A</span>
+                                </div>
+                                <div><strong>Session:</strong>
+                                    <small th:text="${transaction.qrPaymentDetails.sessionId}">N/A</small>
+                                </div>
+                                <div><strong>Status:</strong>
+                                    <span th:text="${transaction.qrPaymentDetails.qrStatus}"
+                                          th:class="${transaction.qrPaymentDetails.qrStatus == 'COMPLETED'} ? 'badge bg-success' :
+                                                   ${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' :
+                                                   ${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'"
+                                          style="font-size: 0.7em;">
+                                        Status
+                                    </span>
+                                </div>
+                            </div>
+                            <div th:if="${transaction.qrPaymentDetails == null}" class="text-muted">
+                                <small>Not QR payment</small>
+                            </div>
+                        </td>
                     </tr>
                     <tr th:if="${#lists.isEmpty(transactions)}">
-                        <td colspan="5" class="text-center text-muted">No transactions found for the selected period</td>
+                        <td colspan="7" class="text-center text-muted">No transactions found for the selected period</td>
                     </tr>
                     </tbody>
                 </table>
