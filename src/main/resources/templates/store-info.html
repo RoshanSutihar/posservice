@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <title>Store Information</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .readonly-field {
+            background-color: #f8f9fa;
+            cursor: not-allowed;
+        }
+        .secret-display {
+            font-family: monospace;
+            letter-spacing: 2px;
+        }
+    </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
@@ -30,35 +40,51 @@
     </div>
 
     <div class="card">
-        <div class="card-header">
+        <div class="card-header d-flex justify-content-between align-items-center">
             <h5>Store Information</h5>
+            <!-- Edit Button (only shown when not in edit mode) -->
+            <div th:if="${not isEditMode}">
+                <a th:href="@{/store/edit}" class="btn btn-warning">
+                    <i class="fas fa-edit"></i> Edit Store Info
+                </a>
+            </div>
         </div>
         <div class="card-body">
-            <form th:action="@{/store}" th:object="${storeInfo}" method="post">
+            <form th:action="@{/store}" th:object="${storeInfo}" method="post"
+                  th:attr="onsubmit=${isEditMode} ? null : 'return false;'">
                 <!-- Basic Store Info -->
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="storeName" class="form-label">Store Name *</label>
                         <input type="text" class="form-control" id="storeName" th:field="*{storeName}"
-                               placeholder="Enter store name" required>
+                               placeholder="Enter store name"
+                               th:disabled="${not isEditMode}"
+                               th:classappend="${not isEditMode} ? 'readonly-field' : ''"
+                               required>
                     </div>
                     <div class="col-md-6">
                         <label for="phoneNumber" class="form-label">Phone Number</label>
                         <input type="text" class="form-control" id="phoneNumber" th:field="*{phoneNumber}"
-                               placeholder="Enter phone number">
+                               placeholder="Enter phone number"
+                               th:disabled="${not isEditMode}"
+                               th:classappend="${not isEditMode} ? 'readonly-field' : ''">
                     </div>
                 </div>
 
                 <div class="mb-3">
                     <label for="address" class="form-label">Address</label>
                     <textarea class="form-control" id="address" th:field="*{address}"
-                              placeholder="Enter store address" rows="3"></textarea>
+                              placeholder="Enter store address" rows="3"
+                              th:disabled="${not isEditMode}"
+                              th:classappend="${not isEditMode} ? 'readonly-field' : ''"></textarea>
                 </div>
 
                 <div class="mb-3">
                     <label for="email" class="form-label">Email</label>
                     <input type="email" class="form-control" id="email" th:field="*{email}"
-                           placeholder="Enter email address">
+                           placeholder="Enter email address"
+                           th:disabled="${not isEditMode}"
+                           th:classappend="${not isEditMode} ? 'readonly-field' : ''">
                 </div>
 
                 <hr>
@@ -70,12 +96,39 @@
                     <div class="col-md-6">
                         <label for="apiUrl" class="form-label">API URL</label>
                         <input type="url" class="form-control" id="apiUrl" th:field="*{apiUrl}"
-                               placeholder="https://api.example.com">
+                               placeholder="https://api.example.com"
+                               th:disabled="${not isEditMode}"
+                               th:classappend="${not isEditMode} ? 'readonly-field' : ''">
                     </div>
                     <div class="col-md-6">
                         <label for="secretKey" class="form-label">Secret Key</label>
-                        <input type="password" class="form-control" id="secretKey" th:field="*{secretKey}"
-                               placeholder="Enter secret key">
+
+                        <!-- View Mode: Show masked value (readonly text field) -->
+                        <div th:if="${not isEditMode}">
+                            <input type="text" class="form-control secret-display readonly-field"
+                                   th:value="${storeInfo.secretKey}"
+                                   readonly
+                                   placeholder="No secret key configured">
+                        </div>
+
+                        <!-- Edit Mode: Password input with placeholder text -->
+                        <div th:if="${isEditMode}">
+                            <input type="password" class="form-control"
+                                   id="secretKeyInput"
+                                   name="secretKey"
+                                   placeholder="Enter new secret key (leave blank to keep current)">
+                            <input type="hidden" name="originalSecretKey" th:value="${originalSecretKey}">
+                            <small class="text-muted">
+                                Current:
+                                <span th:if="${#strings.isEmpty(originalSecretKey)}">
+                                    Not set
+                                </span>
+                                <span th:unless="${#strings.isEmpty(originalSecretKey)}" class="secret-display">
+                                    [[${#strings.substring(originalSecretKey, 0, 4)}]]********
+                                    [[${#strings.substring(originalSecretKey, #strings.length(originalSecretKey)-4)}]]
+                                </span>
+                            </small>
+                        </div>
                     </div>
                 </div>
 
@@ -83,24 +136,79 @@
                     <div class="col-md-6">
                         <label for="merchantId" class="form-label">Merchant ID</label>
                         <input type="text" class="form-control" id="merchantId" th:field="*{merchantId}"
-                               placeholder="Enter merchant ID">
+                               placeholder="Enter merchant ID"
+                               th:disabled="${not isEditMode}"
+                               th:classappend="${not isEditMode} ? 'readonly-field' : ''">
                     </div>
                     <div class="col-md-6">
                         <label for="terminalId" class="form-label">Terminal ID</label>
                         <input type="text" class="form-control" id="terminalId" th:field="*{terminalId}"
-                               placeholder="Enter terminal ID">
+                               placeholder="Enter terminal ID"
+                               th:disabled="${not isEditMode}"
+                               th:classappend="${not isEditMode} ? 'readonly-field' : ''">
                     </div>
                 </div>
 
-                <div class="mt-4">
-                    <button type="submit" class="btn btn-primary">Save Store Information</button>
-                    <a href="/" class="btn btn-outline-secondary">Cancel</a>
+                <!-- Form Actions -->
+                <div class="mt-4" th:if="${isEditMode}">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <a th:href="@{/store}" class="btn btn-outline-secondary">Cancel</a>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<!-- Add Font Awesome for icons -->
+<script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Disable form submission when not in edit mode
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        const isEditMode = [[${isEditMode}]];
+
+        if (!isEditMode) {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                return false;
+            });
+        }
+
+        // Add eye icon toggle for password field in edit mode
+        if (isEditMode) {
+            const secretKeyInput = document.getElementById('secretKeyInput');
+            if (secretKeyInput) {
+                // Create eye icon button
+                const eyeButton = document.createElement('button');
+                eyeButton.type = 'button';
+                eyeButton.className = 'btn btn-outline-secondary';
+                eyeButton.style.position = 'absolute';
+                eyeButton.style.right = '0';
+                eyeButton.style.top = '0';
+                eyeButton.style.height = '100%';
+                eyeButton.innerHTML = '<i class="fas fa-eye"></i>';
+
+                // Wrap input in a relative container
+                const container = document.createElement('div');
+                container.style.position = 'relative';
+                secretKeyInput.parentNode.insertBefore(container, secretKeyInput);
+                container.appendChild(secretKeyInput);
+                container.appendChild(eyeButton);
+
+                // Add toggle functionality
+                eyeButton.addEventListener('click', function() {
+                    if (secretKeyInput.type === 'password') {
+                        secretKeyInput.type = 'text';
+                        eyeButton.innerHTML = '<i class="fas fa-eye-slash"></i>';
+                    } else {
+                        secretKeyInput.type = 'password';
+                        eyeButton.innerHTML = '<i class="fas fa-eye"></i>';
+                    }
+                });
+            }
+        }
+    });
+</script>
 </body>
 </html>

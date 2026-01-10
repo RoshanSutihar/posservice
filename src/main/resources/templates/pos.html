@@ -157,6 +157,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+
 <script>
 
     let cart = [];
@@ -166,60 +170,51 @@
     let paymentCompletionData = null;
     let receiptModalInstance = null;
 
-    const MERCHANT_CONFIG = {
-        merchantId: "DEMO_COMPANY_1765647042925",
-        secretKey: "CYBH14PNmf2xNPao2B/wH4Z1C3F2eMx6CSv7ZUpTU0M"
-    };
+    // Payment configuration - loaded from backend (database)
+    let merchantConfig = null;      // { merchantId, terminalId }
+    let paymentApiBaseUrl = null;   // base URL for status checks
 
-    function generateSignature(merchantId, requestData, secretKey) {
-
-
-        const ordered = {
-            terminalId: requestData.terminalId,
-            amount: Number(requestData.amount),
-            transactionRef: requestData.transactionRef,
-            callbackUrl: requestData.callbackUrl
-        };
-
-        const jsonString = JSON.stringify(ordered);
-
-        const dataToSign = merchantId + jsonString;
-
-        const key = CryptoJS.enc.Base64.parse(secretKey);
-        const signature = CryptoJS.HmacSHA256(dataToSign, key);
-
-        return CryptoJS.enc.Base64.stringify(signature);
-    }
-
-
-    function showToast(message) {
-        const toast = document.createElement('div');
-        toast.className = 'position-fixed bottom-0 end-0 p-3';
-        toast.style.zIndex = '11';
-        toast.innerHTML = `
-            <div class="toast show" role="alert">
-                <div class="toast-body">
-                    ${message}
-                </div>
-            </div>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-            toast.remove();
-        }, 3000);
-    }
-
-
-
+    // ───────────────────────────────────────────────────────────────
+    // Load configuration when page starts
+    // ───────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function() {
-        loadQuickProducts();
+        fetch('/api/config/payment')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Failed to load payment configuration: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(config => {
+                merchantConfig = {
+                    merchantId: config.merchantId || '',
+                    terminalId: config.terminalId || 'DEFAULT_TERMINAL'
+                };
+
+                paymentApiBaseUrl = config.apiUrl?.trim()
+                    ? config.apiUrl.trim().replace(/\/+$/, '')  // remove trailing slash
+                    : 'http://localhost:8091';
+
+                console.log('Payment configuration loaded successfully');
+
+                // Now safe to load products
+                loadQuickProducts();
+            })
+            .catch(error => {
+                console.error('Critical: Failed to load payment configuration', error);
+                showToast('Cannot load payment settings. Please contact administrator.');
+                // Disable payment button as safety measure
+                const payButton = document.querySelector('.btn-success.btn-lg');
+                if (payButton) payButton.disabled = true;
+            });
+
+        // Original listeners
         document.getElementById('upc').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 addProductByUPC();
             }
         });
-
 
         document.getElementById('paymentModal').addEventListener('hidden.bs.modal', function() {
             document.getElementById('paymentMethod').value = 'CASH';
@@ -237,10 +232,22 @@
         });
     });
 
-
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed bottom-0 end-0 p-3';
+        toast.style.zIndex = '11';
+        toast.innerHTML = `
+            <div class="toast show" role="alert">
+                <div class="toast-body">
+                    ${message}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
 
     function loadQuickProducts() {
-
         fetch('/products/all')
             .then(response => response.json())
             .then(displayQuickProducts)
@@ -398,17 +405,19 @@
         }
     }
 
-
-
     function showPaymentModal() {
         if (cart.length === 0) {
             alert('Cart is empty');
             return;
         }
 
+        if (!merchantConfig?.merchantId) {
+            alert('Payment configuration is not loaded. Cannot process payment.');
+            return;
+        }
+
         const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
         document.getElementById('paymentTotal').textContent = `Total: $${total.toFixed(2)}`;
-
 
         document.getElementById('paymentMethod').value = 'CASH';
         document.getElementById('tenderedAmount').value = '';
@@ -431,7 +440,6 @@
         document.getElementById('qrFields').style.display = method === 'QR' ? 'block' : 'none';
 
         if (method === 'QR') {
-
             document.getElementById('qrCode').innerHTML = '';
             document.getElementById('paymentStatus').className = 'alert alert-info';
             document.getElementById('paymentStatus').textContent = 'Generating QR code...';
@@ -441,29 +449,23 @@
         }
     }
 
-
     function generateQRPayment() {
         const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
         const transactionRef = 'TXN_' + Date.now();
 
-        const requestData = {
+        const payload = {
             amount: Number(total.toFixed(2)),
-            callbackUrl: "https://mystore.com/payment-callback",
-            terminalId: "POS_TERMINAL_001",
+            callbackUrl: window.location.origin + "/payment-callback",
+            terminalId: merchantConfig.terminalId,
             transactionRef: transactionRef
         };
 
-        const signature = generateSignature(MERCHANT_CONFIG.merchantId, requestData, MERCHANT_CONFIG.secretKey);
-        const requestBodyToSend = JSON.stringify(requestData);
-
-        fetch('http://localhost:8091/api/v1/payments/initiate', {
+        fetch('/api/payments/initiate-qr', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'X-Merchant-ID': MERCHANT_CONFIG.merchantId,
-                'X-Signature': signature
+                'Content-Type': 'application/json'
             },
-            body: requestBodyToSend
+            body: JSON.stringify(payload)
         })
         .then(response => response.json())
         .then(data => {
@@ -471,18 +473,15 @@
             const qrCodeContainer = document.getElementById('qrCode');
             qrCodeContainer.innerHTML = '';
 
-            if (data.success) {
+            if (data.success === true) {
                 currentSessionId = data.sessionId;
 
-
                 if (!data.qrData || typeof data.qrData !== 'string' || data.qrData.trim() === '') {
-                    console.error("Server returned success but missing or invalid 'qrData'.", data);
-                    qrCodeContainer.innerHTML = '<div class="text-danger">Server Error: Missing QR data.</div>';
+                    qrCodeContainer.innerHTML = '<div class="text-danger">Server returned invalid QR data</div>';
                     statusElement.className = 'alert alert-danger';
-                    statusElement.textContent = 'Server Error: Missing QR data.';
+                    statusElement.textContent = 'Server Error: Missing or invalid QR data';
                     return;
                 }
-
 
                 const canvas = document.createElement('canvas');
                 qrCodeContainer.appendChild(canvas);
@@ -490,24 +489,24 @@
                 QRCode.toCanvas(canvas, data.qrData, function (error) {
                     if (error) {
                         console.error('QR Code generation failed:', error);
-                        qrCodeContainer.innerHTML = `<div class="text-danger">Failed to generate QR: ${error.message}</div>`;
-                        statusElement.textContent = 'Failed to generate QR.';
+                        qrCodeContainer.innerHTML = `<div class="text-danger">Failed to generate QR code</div>`;
+                        statusElement.textContent = 'Failed to generate QR code';
                     } else {
                         statusElement.className = 'alert alert-info';
-                        statusElement.textContent = 'QR Code generated. Waiting for payment...';
+                        statusElement.textContent = 'QR Code generated. Please scan to pay.';
                         startPaymentChecking();
                     }
                 });
             } else {
                 statusElement.className = 'alert alert-danger';
-                statusElement.textContent = 'Failed to generate QR: ' + data.message;
+                statusElement.textContent = 'Failed to initiate payment: ' + (data.message || 'Unknown error');
                 stopPaymentChecking();
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error initiating QR payment:', error);
             document.getElementById('paymentStatus').className = 'alert alert-danger';
-            document.getElementById('paymentStatus').textContent = 'Error communicating with payment service';
+            document.getElementById('paymentStatus').textContent = 'Error contacting payment service';
             stopPaymentChecking();
         });
     }
@@ -527,14 +526,13 @@
     function checkQRPaymentStatus() {
         if (!currentSessionId) return;
 
-        fetch(`http://localhost:8091/api/v1/payments/status/${currentSessionId}`)
+        fetch(`${paymentApiBaseUrl}/api/v1/payments/status/${currentSessionId}`)
             .then(response => response.json())
             .then(data => {
                 const statusElement = document.getElementById('paymentStatus');
-                statusElement.textContent = `Waiting for payment... (Current Status: ${data.status})`;
+                statusElement.textContent = `Waiting for payment... (Status: ${data.status || 'unknown'})`;
 
                 if (data.status === 'COMPLETED') {
-                    console.log('Payment successful data:', data);
                     paymentCompletionData = data;
                     statusElement.className = 'alert alert-success';
                     statusElement.textContent = 'Payment Completed!';
@@ -548,14 +546,12 @@
                     statusElement.className = 'alert alert-warning';
                     statusElement.textContent = 'Payment Cancelled';
                     stopPaymentChecking();
-                } else {
-                    statusElement.className = 'alert alert-info';
                 }
             })
             .catch(error => {
                 console.error('Error checking payment status:', error);
                 document.getElementById('paymentStatus').className = 'alert alert-danger';
-                document.getElementById('paymentStatus').textContent = 'Error checking payment status.';
+                document.getElementById('paymentStatus').textContent = 'Error checking payment status';
                 stopPaymentChecking();
             });
     }
@@ -566,6 +562,7 @@
         if (paymentMethod === 'CASH') {
             const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
             const tendered = parseFloat(document.getElementById('tenderedAmount').value) || 0;
+
             if (tendered < total) {
                 alert('Insufficient amount tendered');
                 return;
@@ -575,14 +572,14 @@
                 amount: total,
                 currency: 'USD',
                 status: 'COMPLETED',
-                merchantId: MERCHANT_CONFIG.merchantId,
+                merchantId: merchantConfig?.merchantId || 'CONFIG_ERROR',
                 transactionRef: 'CASH_' + Date.now(),
                 createdAt: new Date().toISOString()
             };
+
             processTransaction('CASH');
         } else if (paymentMethod === 'QR') {
-
-            alert('Waiting for QR payment to complete. Please check the status.');
+            alert('Please wait for the customer to complete the QR payment or manually check status.');
         }
     }
 
@@ -608,17 +605,13 @@
 
         fetch('/complete-sale', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(transactionData)
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                console.log('Transaction completion data:', data);
                 showReceipt(data.transactionId, transactionData, paymentCompletionData);
-                // @ts-ignore
                 bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide();
                 cart = [];
                 updateCartDisplay();
@@ -627,11 +620,11 @@
                 paymentCompletionData = null;
                 stopPaymentChecking();
             } else {
-                throw new Error(data.error || 'Unknown error occurred');
+                throw new Error(data.error || 'Unknown error');
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error completing sale:', error);
             alert('Error processing sale: ' + error.message);
         })
         .finally(() => {
@@ -640,21 +633,22 @@
         });
     }
 
-
-
     function showReceipt(transactionId, transactionData, paymentData) {
         const totalAmount = transactionData.totalAmount;
         const subtotal = totalAmount / (1 + TAX_RATE);
         const tax = totalAmount - subtotal;
         const paymentMethod = transactionData.paymentMethod;
-        const merchantId = paymentData ? paymentData.merchantId : MERCHANT_CONFIG.merchantId;
-        const maskedMerchantId = '******' + merchantId.slice(-4);
-        const transactionRef = paymentData ? paymentData.transactionRef : 'N/A';
-        const createdAt = paymentData ? new Date(paymentData.createdAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        const merchantId = paymentData?.merchantId || merchantConfig?.merchantId || 'N/A';
+        const maskedMerchantId = merchantId !== 'N/A' ? '******' + merchantId.slice(-4) : 'N/A';
+
+        const transactionRef = paymentData?.transactionRef || 'N/A';
+        const createdAt = paymentData
+            ? new Date(paymentData.createdAt).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            : new Date().toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
         const amount = paymentData ? paymentData.amount.toFixed(2) : totalAmount.toFixed(2);
-
-        const sessionId = paymentData && paymentData.sessionId ? paymentData.sessionId : 'N/A';
-
+        const sessionId = paymentData?.sessionId || currentSessionId || 'N/A';
 
         const receiptText = `MY POS STORE
 Invoice date ${createdAt}
@@ -685,10 +679,10 @@ Merchant Copy`;
                 <hr>
                 <h5>Items:</h5>
                 ${transactionData.cartItems.map(item => `
-                <div class="d-flex justify-content-between">
-                    <span>${item.name} x${item.quantity}</span>
-                    <span>$${(item.price * item.quantity).toFixed(2)}</span>
-                </div>
+                    <div class="d-flex justify-content-between">
+                        <span>${item.name} x${item.quantity}</span>
+                        <span>$${(item.price * item.quantity).toFixed(2)}</span>
+                    </div>
                 `).join('')}
                 <hr>
                 <button class="btn btn-primary mt-2" onclick="printReceipt()">Print Receipt</button>
@@ -713,7 +707,6 @@ Merchant Copy`;
         `;
 
         document.body.appendChild(receiptModal);
-        // @ts-ignore
         receiptModalInstance = new bootstrap.Modal(receiptModal);
         receiptModalInstance.show();
 
@@ -727,21 +720,14 @@ Merchant Copy`;
         window.print();
     }
 
-    function closeReceipt() {
-        if (receiptModalInstance) {
-            receiptModalInstance.hide();
-        }
-    }
-
     function calculateChange() {
         const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
         const tendered = parseFloat(document.getElementById('tenderedAmount').value) || 0;
         const change = tendered - total;
         document.getElementById('changeDue').value = change >= 0 ? `$${change.toFixed(2)}` : 'Insufficient';
-
-
         document.getElementById('completeSaleBtn').disabled = change < 0;
     }
+
 </script>
 </body>
 </html>
