@@ -162,7 +162,6 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
 
 <script>
-
     let cart = [];
     const TAX_RATE = 0.08;
     let currentSessionId = null;
@@ -172,13 +171,10 @@
 
     // Payment configuration - loaded from backend (database)
     let merchantConfig = null;      // { merchantId, terminalId }
-    let paymentApiBaseUrl = null;   // base URL for status checks
 
-    // ───────────────────────────────────────────────────────────────
-    // Load configuration when page starts
-    // ───────────────────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', function() {
-        fetch('/api/config/payment')
+        // Changed from '/api/config/payment' to '/api/payments/config'
+        fetch('/api/payments/config')
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`Failed to load payment configuration: ${response.status}`);
@@ -191,11 +187,7 @@
                     terminalId: config.terminalId || 'DEFAULT_TERMINAL'
                 };
 
-                paymentApiBaseUrl = config.apiUrl?.trim()
-                    ? config.apiUrl.trim().replace(/\/+$/, '')  // remove trailing slash
-                    : 'http://localhost:8091';
-
-                console.log('Payment configuration loaded successfully');
+                console.log('Payment configuration loaded successfully:', merchantConfig);
 
                 // Now safe to load products
                 loadQuickProducts();
@@ -524,92 +516,113 @@
     }
 
     function checkQRPaymentStatus() {
-    if (!currentSessionId) return;
+        if (!currentSessionId) return;
 
-    console.log('=== DEBUG STATUS CHECK ===');
-    console.log('Session ID:', currentSessionId);
-    console.log('Payment API URL:', paymentApiBaseUrl);
+        console.log('=== DEBUG STATUS CHECK ===');
+        console.log('Session ID:', currentSessionId);
+        console.log('Checking via backend endpoint...');
 
-    const statusUrl = `${paymentApiBaseUrl}/api/v1/payments/status/${currentSessionId}`;
-    console.log('Full URL to call:', statusUrl);
+        // Call the backend endpoint which will proxy to the external API
+        const backendStatusUrl = `/api/payments/status/${currentSessionId}`;
+        console.log('Backend URL:', backendStatusUrl);
 
-    // Add timestamp to avoid cache
-    const timestamp = new Date().getTime();
-    const urlWithCacheBuster = `${statusUrl}?_=${timestamp}`;
+        // Add timestamp to avoid cache
+        const timestamp = new Date().getTime();
+        const urlWithCacheBuster = `${backendStatusUrl}?_=${timestamp}`;
 
-    console.log('Making fetch request to:', urlWithCacheBuster);
+        fetch(urlWithCacheBuster, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            },
+            cache: 'no-cache'
+        })
+        .then(response => {
+            console.log('Backend Response Status:', response.status);
+            console.log('Backend Response OK:', response.ok);
 
-    fetch(urlWithCacheBuster, {
-        method: 'GET',
-        headers: {
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache'
-        },
-        cache: 'no-cache'
-    })
-    .then(response => {
-        console.log('Response Status:', response.status);
-        console.log('Response OK:', response.ok);
-        console.log('Response Headers:');
-        response.headers.forEach((value, key) => {
-            console.log(`  ${key}: ${value}`);
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Backend Error Response:', text);
+                    throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Backend Status Response:', JSON.stringify(data, null, 2));
+
+            const statusElement = document.getElementById('paymentStatus');
+
+            // Check if this is an error response from our backend
+            if (data.error) {
+                console.error('Backend reported error:', data.error);
+                statusElement.className = 'alert alert-warning';
+                statusElement.textContent = `Backend error: ${data.error}`;
+                return;
+            }
+
+            // Check the actual payment status from the gateway
+            const paymentStatus = data.status || 'PENDING';
+
+            if (paymentStatus === 'COMPLETED') {
+                console.log('Payment completed!');
+                paymentCompletionData = {
+                    amount: data.amount || 0,
+                    currency: data.currency || 'USD',
+                    status: 'COMPLETED',
+                    merchantId: data.merchantId || merchantConfig?.merchantId,
+                    transactionRef: data.transactionRef || 'N/A',
+                    createdAt: data.completedAt || new Date().toISOString(),
+                    sessionId: currentSessionId,
+                    gatewayData: data // Store the full response for debugging
+                };
+
+                statusElement.className = 'alert alert-success';
+                statusElement.textContent = 'Payment Completed!';
+                stopPaymentChecking();
+
+                // Auto-process the transaction
+                console.log('Auto-processing transaction...');
+                processTransaction('QR');
+            } else if (paymentStatus === 'PENDING') {
+                statusElement.className = 'alert alert-info';
+                statusElement.textContent = 'Awaiting payment...';
+                console.log('Payment still pending...');
+            } else if (paymentStatus === 'PROCESSING') {
+                statusElement.className = 'alert alert-info';
+                statusElement.textContent = 'Payment processing...';
+                console.log('Payment processing...');
+            } else if (paymentStatus === 'FAILED') {
+                statusElement.className = 'alert alert-danger';
+                statusElement.textContent = 'Payment failed. Please try again.';
+                console.error('Payment failed');
+                stopPaymentChecking();
+            } else if (paymentStatus === 'CANCELLED') {
+                statusElement.className = 'alert alert-warning';
+                statusElement.textContent = 'Payment cancelled.';
+                console.log('Payment cancelled');
+                stopPaymentChecking();
+            } else {
+                // Unknown status
+                statusElement.className = 'alert alert-info';
+                statusElement.textContent = `Status: ${paymentStatus}`;
+                console.log(`Unknown status: ${paymentStatus}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking payment status:', error);
+
+            document.getElementById('paymentStatus').className = 'alert alert-warning';
+            document.getElementById('paymentStatus').textContent = `Network error: ${error.message}`;
+
+            // Don't stop checking - might be temporary network issue
+            console.log('Will retry in next interval...');
         });
 
-        if (!response.ok) {
-            // Try to read the error response
-            return response.text().then(text => {
-                console.error('Error Response Body:', text);
-                throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Status Response Data:', JSON.stringify(data, null, 2));
-        console.log('Response structure:', Object.keys(data));
-        console.log('Status field value:', data.status);
-
-        const statusElement = document.getElementById('paymentStatus');
-
-        if (data.status === 'COMPLETED') {
-            console.log(' Payment completed!');
-            paymentCompletionData = {
-                amount: data.amount || 0,
-                currency: data.currency || 'USD',
-                status: 'COMPLETED',
-                merchantId: data.merchantId || merchantConfig?.merchantId,
-                transactionRef: data.transactionRef || 'N/A',
-                createdAt: data.completedAt || new Date().toISOString(),
-                sessionId: currentSessionId
-            };
-
-            statusElement.className = 'alert alert-success';
-            statusElement.textContent = ' Payment Completed!';
-            stopPaymentChecking();
-
-            // Auto-process the transaction
-            console.log('Auto-processing transaction...');
-            processTransaction('QR');
-        } else {
-            statusElement.textContent = `Status: ${data.status || 'PENDING'}`;
-            console.log(`Current status: ${data.status}`);
-        }
-    })
-    .catch(error => {
-        console.error(' Fetch Error Details:', error);
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-
-        document.getElementById('paymentStatus').className = 'alert alert-danger';
-        document.getElementById('paymentStatus').textContent = `Error: ${error.message}`;
-
-        // Don't stop checking - might be temporary network issue
-        console.log('Will retry in next interval...');
-    });
-
-    console.log('=== END DEBUG ===');
-}
+        console.log('=== END DEBUG ===');
+    }
 
     function processPayment() {
         const paymentMethod = document.getElementById('paymentMethod').value;
@@ -706,26 +719,26 @@
         const sessionId = paymentData?.sessionId || currentSessionId || 'N/A';
 
         const receiptText = `MY POS STORE
-Invoice date ${createdAt}
+    Invoice date ${createdAt}
 
-SALE ${paymentMethod.toUpperCase()}
+    SALE ${paymentMethod.toUpperCase()}
 
-QR Payment Completed
-Apply Method: QR Scan
-Merchant ID: ${maskedMerchantId}
-Transaction Ref: ${transactionRef}
-Invoice: ${transactionId}
-Result: APPROVED
-Approved Amount: USD $${amount}
+    QR Payment Completed
+    Apply Method: QR Scan
+    Merchant ID: ${maskedMerchantId}
+    Transaction Ref: ${transactionRef}
+    Invoice: ${transactionId}
+    Result: APPROVED
+    Approved Amount: USD $${amount}
 
-${paymentMethod} Payment
-Session: ${sessionId}
+    ${paymentMethod} Payment
+    Session: ${sessionId}
 
-Transaction ID: ${transactionId}
+    Transaction ID: ${transactionId}
 
-Thanks for shopping with us!
+    Thanks for shopping with us!
 
-Merchant Copy`;
+    Merchant Copy`;
 
         const receiptContent = `
             <div class="receipt text-left">
@@ -782,7 +795,6 @@ Merchant Copy`;
         document.getElementById('changeDue').value = change >= 0 ? `$${change.toFixed(2)}` : 'Insufficient';
         document.getElementById('completeSaleBtn').disabled = change < 0;
     }
-
 </script>
 </body>
 </html>
