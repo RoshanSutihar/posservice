@@ -524,37 +524,58 @@
     }
 
     function checkQRPaymentStatus() {
-        if (!currentSessionId) return;
+    if (!currentSessionId) return;
 
-        fetch(`${paymentApiBaseUrl}/api/v1/payments/status/${currentSessionId}`)
-            .then(response => response.json())
-            .then(data => {
-                const statusElement = document.getElementById('paymentStatus');
-                statusElement.textContent = `Waiting for payment... (Status: ${data.status || 'unknown'})`;
+    fetch(`${paymentApiBaseUrl}/api/v1/payments/status/${currentSessionId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Payment status response:', data); // Debug log
 
-                if (data.status === 'COMPLETED') {
-                    paymentCompletionData = data;
-                    statusElement.className = 'alert alert-success';
-                    statusElement.textContent = 'Payment Completed!';
-                    stopPaymentChecking();
-                    processTransaction('QR');
-                } else if (data.status === 'FAILED') {
-                    statusElement.className = 'alert alert-danger';
-                    statusElement.textContent = 'Payment Failed';
-                    stopPaymentChecking();
-                } else if (data.status === 'CANCELLED') {
-                    statusElement.className = 'alert alert-warning';
-                    statusElement.textContent = 'Payment Cancelled';
-                    stopPaymentChecking();
-                }
-            })
-            .catch(error => {
-                console.error('Error checking payment status:', error);
-                document.getElementById('paymentStatus').className = 'alert alert-danger';
-                document.getElementById('paymentStatus').textContent = 'Error checking payment status';
+            const statusElement = document.getElementById('paymentStatus');
+
+            // Check the actual status from response
+            const status = data.status || 'PENDING';
+
+            statusElement.textContent = `Status: ${status}`;
+
+            if (status === 'COMPLETED') {
+                paymentCompletionData = {
+                    amount: data.amount || 0,
+                    currency: data.currency || 'USD',
+                    status: 'COMPLETED',
+                    merchantId: data.merchantId || merchantConfig?.merchantId,
+                    transactionRef: data.transactionRef || 'N/A',
+                    createdAt: data.completedAt || new Date().toISOString(),
+                    sessionId: currentSessionId
+                };
+
+                statusElement.className = 'alert alert-success';
+                statusElement.textContent = 'Payment Completed!';
                 stopPaymentChecking();
-            });
-    }
+
+                // Auto-process the transaction if payment is complete
+                processTransaction('QR');
+            } else if (status === 'FAILED' || status === 'CANCELLED') {
+                statusElement.className = 'alert alert-danger';
+                statusElement.textContent = `Payment ${status}`;
+                stopPaymentChecking();
+            } else {
+                // Still pending, update status
+                statusElement.className = 'alert alert-info';
+                statusElement.textContent = `Waiting for payment... (Status: ${status})`;
+            }
+        })
+        .catch(error => {
+            console.error('Error checking payment status:', error);
+            document.getElementById('paymentStatus').className = 'alert alert-warning';
+            document.getElementById('paymentStatus').textContent = 'Error checking status. Retrying...';
+        });
+}
 
     function processPayment() {
         const paymentMethod = document.getElementById('paymentMethod').value;
