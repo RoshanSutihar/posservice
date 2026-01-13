@@ -1,6 +1,7 @@
 package com.roshansutihar.posmachine.resource;
 
 import com.roshansutihar.posmachine.entity.*;
+import com.roshansutihar.posmachine.enums.PaymentMethod;
 import com.roshansutihar.posmachine.enums.QrPaymentStatus;
 import com.roshansutihar.posmachine.enums.TransactionType;
 import com.roshansutihar.posmachine.repository.*;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,11 +41,11 @@ public class PosController {
 
     @PostMapping("/complete-sale")
     @ResponseBody
+    @Transactional // Ensures Transaction, Payment, and QrPayment are saved as a single unit
     public ResponseEntity<?> completeSale(@RequestBody SaleRequest saleRequest) {
         try {
             // 1. Create transaction items
             List<TransactionItem> transactionItems = new ArrayList<>();
-
             for (CartItem cartItem : saleRequest.getCartItems()) {
                 Product product = productRepository.findById(cartItem.getProductId())
                         .orElseThrow(() -> new RuntimeException("Product not found: " + cartItem.getProductId()));
@@ -54,39 +56,38 @@ public class PosController {
                         .priceAtSale(product.getPrice())
                         .subtotal(product.getPrice().multiply(BigDecimal.valueOf(cartItem.getQuantity())))
                         .build();
-
                 transactionItems.add(item);
             }
 
-            // 2. Create transaction
+            // 2. Create and Save Transaction
             Transactions transaction = Transactions.builder()
                     .transactionType(TransactionType.SALE)
                     .totalAmount(saleRequest.getTotalAmount())
                     .transactionDate(OffsetDateTime.now())
-                    .transactionItems(transactionItems)
                     .build();
 
-            // Link items to transaction
+            // Link items
             Transactions finalTransaction = transaction;
             transactionItems.forEach(item -> item.setTransaction(finalTransaction));
+            transaction.setTransactionItems(transactionItems);
 
-            // Save transaction
             transaction = transactionsRepository.save(transaction);
 
-            // 3. Create payment
+            // 3. Create and Save Payment
             Payment payment = Payment.builder()
                     .transaction(transaction)
-                    .paymentMethod(saleRequest.getPaymentMethod())
+                    .paymentMethod(saleRequest.getPaymentMethod()) // Assuming DTO maps JSON string to Enum
                     .amount(saleRequest.getTotalAmount())
                     .paymentDate(OffsetDateTime.now())
                     .build();
 
             payment = paymentRepository.save(payment);
 
-            // 4. If QR payment, create QR payment record
-            if ("QR".equals(saleRequest.getPaymentMethod()) && saleRequest.getQrPaymentDetails() != null) {
+            // 4. Correct Enum Comparison
+            // We compare against the Enum constant directly
+            if (PaymentMethod.QR.equals(saleRequest.getPaymentMethod()) && saleRequest.getQrPaymentDetails() != null) {
                 QrPayment qrPayment = QrPayment.builder()
-                        .payment(payment) // Link to payment
+                        .payment(payment)
                         .terminalId(saleRequest.getQrPaymentDetails().getTerminalId())
                         .merchantId(saleRequest.getQrPaymentDetails().getMerchantId())
                         .sessionId(saleRequest.getQrPaymentDetails().getSessionId())
@@ -95,7 +96,6 @@ public class PosController {
                         .qrStatus(QrPaymentStatus.COMPLETED)
                         .build();
 
-                // Save QR payment (you'll need QrPaymentRepository)
                 qrPaymentRepository.save(qrPayment);
             }
 
@@ -108,10 +108,7 @@ public class PosController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of(
-                            "success", false,
-                            "error", "Error completing sale: " + e.getMessage()
-                    ));
+                    .body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 }
