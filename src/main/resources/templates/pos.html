@@ -168,12 +168,9 @@
     let paymentCheckInterval = null;
     let paymentCompletionData = null;
     let receiptModalInstance = null;
-
-    // Payment configuration - loaded from backend (database)
-    let merchantConfig = null;      // { merchantId, terminalId }
+    let merchantConfig = null;
 
     document.addEventListener('DOMContentLoaded', function() {
-        // Changed from '/api/config/payment' to '/api/payments/config'
         fetch('/api/payments/config')
             .then(response => {
                 if (!response.ok) {
@@ -186,21 +183,16 @@
                     merchantId: config.merchantId || '',
                     terminalId: config.terminalId || 'DEFAULT_TERMINAL'
                 };
-
-                console.log('Payment configuration loaded successfully:', merchantConfig);
-
-                // Now safe to load products
+                console.log('Payment configuration loaded:', merchantConfig);
                 loadQuickProducts();
             })
             .catch(error => {
-                console.error('Critical: Failed to load payment configuration', error);
-                showToast('Cannot load payment settings. Please contact administrator.');
-                // Disable payment button as safety measure
+                console.error('Failed to load payment configuration', error);
+                showToast('Cannot load payment settings.');
                 const payButton = document.querySelector('.btn-success.btn-lg');
                 if (payButton) payButton.disabled = true;
             });
 
-        // Original listeners
         document.getElementById('upc').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -404,7 +396,7 @@
         }
 
         if (!merchantConfig?.merchantId) {
-            alert('Payment configuration is not loaded. Cannot process payment.');
+            alert('Payment configuration is not loaded.');
             return;
         }
 
@@ -518,17 +510,8 @@
     function checkQRPaymentStatus() {
         if (!currentSessionId) return;
 
-        console.log('=== DEBUG STATUS CHECK ===');
-        console.log('Session ID:', currentSessionId);
-        console.log('Checking via backend endpoint...');
-
-        // Call the backend endpoint which will proxy to the external API
-        const backendStatusUrl = `/api/payments/status/${currentSessionId}`;
-        console.log('Backend URL:', backendStatusUrl);
-
-        // Add timestamp to avoid cache
         const timestamp = new Date().getTime();
-        const urlWithCacheBuster = `${backendStatusUrl}?_=${timestamp}`;
+        const urlWithCacheBuster = `/api/payments/status/${currentSessionId}?_=${timestamp}`;
 
         fetch(urlWithCacheBuster, {
             method: 'GET',
@@ -539,35 +522,25 @@
             cache: 'no-cache'
         })
         .then(response => {
-            console.log('Backend Response Status:', response.status);
-            console.log('Backend Response OK:', response.ok);
-
             if (!response.ok) {
                 return response.text().then(text => {
-                    console.error('Backend Error Response:', text);
                     throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
                 });
             }
             return response.json();
         })
         .then(data => {
-            console.log('Backend Status Response:', JSON.stringify(data, null, 2));
-
             const statusElement = document.getElementById('paymentStatus');
 
-            // Check if this is an error response from our backend
             if (data.error) {
-                console.error('Backend reported error:', data.error);
                 statusElement.className = 'alert alert-warning';
                 statusElement.textContent = `Backend error: ${data.error}`;
                 return;
             }
 
-            // Check the actual payment status from the gateway
             const paymentStatus = data.status || 'PENDING';
 
             if (paymentStatus === 'COMPLETED') {
-                console.log('Payment completed!');
                 paymentCompletionData = {
                     amount: data.amount || 0,
                     currency: data.currency || 'USD',
@@ -576,52 +549,38 @@
                     transactionRef: data.transactionRef || 'N/A',
                     createdAt: data.completedAt || new Date().toISOString(),
                     sessionId: currentSessionId,
-                    gatewayData: data // Store the full response for debugging
+                    gatewayData: data
                 };
 
                 statusElement.className = 'alert alert-success';
                 statusElement.textContent = 'Payment Completed!';
                 stopPaymentChecking();
 
-                // Auto-process the transaction
-                console.log('Auto-processing transaction...');
                 processTransaction('QR');
             } else if (paymentStatus === 'PENDING') {
                 statusElement.className = 'alert alert-info';
                 statusElement.textContent = 'Awaiting payment...';
-                console.log('Payment still pending...');
             } else if (paymentStatus === 'PROCESSING') {
                 statusElement.className = 'alert alert-info';
                 statusElement.textContent = 'Payment processing...';
-                console.log('Payment processing...');
             } else if (paymentStatus === 'FAILED') {
                 statusElement.className = 'alert alert-danger';
                 statusElement.textContent = 'Payment failed. Please try again.';
-                console.error('Payment failed');
                 stopPaymentChecking();
             } else if (paymentStatus === 'CANCELLED') {
                 statusElement.className = 'alert alert-warning';
                 statusElement.textContent = 'Payment cancelled.';
-                console.log('Payment cancelled');
                 stopPaymentChecking();
             } else {
-                // Unknown status
                 statusElement.className = 'alert alert-info';
                 statusElement.textContent = `Status: ${paymentStatus}`;
-                console.log(`Unknown status: ${paymentStatus}`);
             }
         })
         .catch(error => {
             console.error('Error checking payment status:', error);
-
             document.getElementById('paymentStatus').className = 'alert alert-warning';
             document.getElementById('paymentStatus').textContent = `Network error: ${error.message}`;
-
-            // Don't stop checking - might be temporary network issue
-            console.log('Will retry in next interval...');
         });
-
-        console.log('=== END DEBUG ===');
     }
 
     function processPayment() {
@@ -663,9 +622,17 @@
                 quantity: item.quantity
             })),
             totalAmount: total,
-            paymentMethod: paymentMethod,
-            qrSessionId: currentSessionId
+            paymentMethod: paymentMethod
         };
+
+        if (paymentMethod === 'QR' && paymentCompletionData) {
+            transactionData.qrPaymentDetails = {
+                terminalId: merchantConfig?.terminalId || 'DEFAULT_TERMINAL',
+                merchantId: merchantConfig?.merchantId || 'CONFIG_ERROR',
+                sessionId: paymentCompletionData.sessionId || currentSessionId,
+                transactionReference: paymentCompletionData.transactionRef || 'TXN_' + Date.now()
+            };
+        }
 
         const completeButton = document.getElementById('completeSaleBtn');
         completeButton.textContent = 'Processing...';
