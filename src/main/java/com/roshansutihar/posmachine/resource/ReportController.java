@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
 @Controller
 @RequestMapping("/reports")
 @RequiredArgsConstructor
@@ -39,7 +40,6 @@ public class ReportController {
                               @RequestParam(required = false) String endDate,
                               Model model) {
 
-        List<Transactions> transactions;
         OffsetDateTime startDateTime;
         OffsetDateTime endDateTime;
 
@@ -53,9 +53,10 @@ public class ReportController {
             endDateTime = end.atTime(23, 59, 59).atOffset(ZoneOffset.UTC);
         }
 
-        // This call no longer crashes because we only fetch ONE 'bag' (payments)
-        transactions = transactionsRepository.findByTransactionDateBetween(startDateTime, endDateTime);
+        // Fetching Transactions + Payments + QR Details (1st Bag)
+        List<Transactions> transactions = transactionsRepository.findByTransactionDateBetween(startDateTime, endDateTime);
 
+        // Map to DTOs (The Transactional session handles the 2nd Bag: TransactionItems)
         List<TransactionReportDto> transactionDtos = transactions.stream()
                 .map(this::convertToDto)
                 .collect(Collectors.toList());
@@ -71,14 +72,14 @@ public class ReportController {
     }
 
     private TransactionReportDto convertToDto(Transactions transaction) {
-        // Since we JOIN FETCHed payments and qrPayment, these are ready
+        // Since we JOIN FETCHed payments and qrPayment, these are ready immediately
         Payment payment = transaction.getPayments().stream()
                 .findFirst()
                 .orElse(null);
 
         QrPayment qrPayment = (payment != null) ? payment.getQrPayment() : null;
 
-        // transactionItems will be fetched here via the Transactional session
+        // Hibernate will fetch items here automatically because of @Transactional
         List<TransactionItemDto> itemDtos = transaction.getTransactionItems().stream()
                 .map(item -> TransactionItemDto.builder()
                         .productName(item.getProduct().getName())
