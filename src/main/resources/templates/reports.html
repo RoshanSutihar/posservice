@@ -4,14 +4,8 @@
     <meta charset="UTF-8">
     <title>Sales Reports</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        .qr-details {
-            background-color: #f8f9fa;
-            border-radius: 5px;
-            padding: 8px;
-            margin-top: 5px;
-            font-size: 0.85em;
-        }
         .qr-badge {
             background-color: #17a2b8;
             color: white;
@@ -25,6 +19,29 @@
             padding: 2px 8px;
             border-radius: 10px;
             font-size: 0.75em;
+        }
+        .eye-btn {
+            border: none;
+            background: transparent;
+            color: #6c757d;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .eye-btn:hover {
+            color: #0d6efd;
+            background-color: #f8f9fa;
+        }
+        .qr-details-table {
+            font-size: 0.9em;
+        }
+        .qr-details-table td {
+            padding: 4px 8px;
+        }
+        .qr-details-table .label {
+            font-weight: bold;
+            color: #495057;
+            width: 120px;
         }
     </style>
 </head>
@@ -129,22 +146,19 @@
                             </div>
                         </td>
                         <td>
-                            <div th:if="${transaction.qrPaymentDetails != null}" class="qr-details">
-                                <div><strong>Ref:</strong>
-                                    <span th:text="${transaction.qrPaymentDetails.transactionReference}">N/A</span>
-                                </div>
-                                <div><strong>Terminal:</strong>
-                                    <span th:text="${transaction.qrPaymentDetails.terminalId}">N/A</span>
-                                </div>
-                                <div><strong>Session:</strong>
-                                    <small th:text="${transaction.qrPaymentDetails.sessionId}">N/A</small>
-                                </div>
-                                <div><strong>Status:</strong>
-                                    <span th:text="${transaction.qrPaymentDetails.qrStatus}"
-                                          th:class="${transaction.qrPaymentDetails.qrStatus == 'COMPLETED'} ? 'badge bg-success' : (${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' : (${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'))">
-                                        Status
-                                    </span>
-                                </div>
+                            <div th:if="${transaction.qrPaymentDetails != null}">
+                                <button type="button" class="eye-btn"
+                                        th:attr="data-bs-toggle='modal', data-bs-target='#qrDetailsModal',
+                                                data-transactionid=${transaction.id},
+                                                data-reference=${transaction.qrPaymentDetails.transactionReference},
+                                                data-terminal=${transaction.qrPaymentDetails.terminalId},
+                                                data-merchant=${transaction.qrPaymentDetails.merchantId},
+                                                data-session=${transaction.qrPaymentDetails.sessionId},
+                                                data-status=${transaction.qrPaymentDetails.qrStatus},
+                                                data-amount=${transaction.totalAmount},
+                                                data-date=${#temporals.format(transaction.transactionDate, 'yyyy-MM-dd HH:mm')}">
+                                    <i class="bi bi-eye"></i> View
+                                </button>
                             </div>
                             <div th:if="${transaction.qrPaymentDetails == null}" class="text-muted">
                                 <small>Not QR payment</small>
@@ -161,6 +175,122 @@
     </div>
 </div>
 
+<!-- QR Details Modal -->
+<div class="modal fade" id="qrDetailsModal" tabindex="-1" aria-labelledby="qrDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="qrDetailsModalLabel">QR Payment Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Transaction Info</h6>
+                                <table class="qr-details-table">
+                                    <tr>
+                                        <td class="label">Transaction ID:</td>
+                                        <td id="modalTransactionId">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="label">Date:</td>
+                                        <td id="modalTransactionDate">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="label">Amount:</td>
+                                        <td id="modalTransactionAmount">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Payment Status</h6>
+                                <div class="mt-2">
+                                    <span id="modalQrStatus" class="badge">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h6>QR Payment Details</h6>
+                        <table class="qr-details-table">
+                            <tr>
+                                <td class="label">Transaction Reference:</td>
+                                <td id="modalReference">-</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Terminal ID:</td>
+                                <td id="modalTerminal">-</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Merchant ID:</td>
+                                <td id="modalMerchant">-</td>
+                            </tr>
+                            <tr>
+                                <td class="label">Session ID:</td>
+                                <td id="modalSession">-</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const qrDetailsModal = document.getElementById('qrDetailsModal');
+
+        if (qrDetailsModal) {
+            qrDetailsModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+
+                const transactionId = button.getAttribute('data-transactionid');
+                const reference = button.getAttribute('data-reference');
+                const terminal = button.getAttribute('data-terminal');
+                const merchant = button.getAttribute('data-merchant');
+                const session = button.getAttribute('data-session');
+                const status = button.getAttribute('data-status');
+                const amount = button.getAttribute('data-amount');
+                const date = button.getAttribute('data-date');
+
+                document.getElementById('modalTransactionId').textContent = transactionId;
+                document.getElementById('modalTransactionDate').textContent = date;
+                document.getElementById('modalTransactionAmount').textContent = '$' + parseFloat(amount).toFixed(2);
+                document.getElementById('modalReference').textContent = reference;
+                document.getElementById('modalTerminal').textContent = terminal;
+                document.getElementById('modalMerchant').textContent = merchant;
+                document.getElementById('modalSession').textContent = session;
+
+                const statusElement = document.getElementById('modalQrStatus');
+                statusElement.textContent = status;
+                statusElement.className = 'badge';
+
+                if (status === 'COMPLETED') {
+                    statusElement.classList.add('bg-success');
+                } else if (status === 'PENDING') {
+                    statusElement.classList.add('bg-warning');
+                } else if (status === 'FAILED') {
+                    statusElement.classList.add('bg-danger');
+                } else {
+                    statusElement.classList.add('bg-secondary');
+                }
+            });
+        }
+    });
+</script>
 </body>
 </html>
