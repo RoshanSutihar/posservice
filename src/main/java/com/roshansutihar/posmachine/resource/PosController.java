@@ -41,10 +41,21 @@ public class PosController {
 
     @PostMapping("/complete-sale")
     @ResponseBody
-    @Transactional // Ensures Transaction, Payment, and QrPayment are saved as a single unit
+    @Transactional
     public ResponseEntity<?> completeSale(@RequestBody SaleRequest saleRequest) {
+        // --- LOGGING START ---
+        System.out.println("====== SALE ATTEMPT LOG ======");
+        System.out.println("Payment Method Received: " + saleRequest.getPaymentMethod());
+        System.out.println("Is QR Method? " + (PaymentMethod.QR.equals(saleRequest.getPaymentMethod())));
+        System.out.println("QR Details Object null? " + (saleRequest.getQrPaymentDetails() == null));
+
+        if (saleRequest.getQrPaymentDetails() != null) {
+            System.out.println("Ref inside Details: " + saleRequest.getQrPaymentDetails().getTransactionReference());
+        }
+        System.out.println("==============================");
+        // --- LOGGING END ---
+
         try {
-            // 1. Create transaction items
             List<TransactionItem> transactionItems = new ArrayList<>();
             for (CartItem cartItem : saleRequest.getCartItems()) {
                 Product product = productRepository.findById(cartItem.getProductId())
@@ -59,33 +70,30 @@ public class PosController {
                 transactionItems.add(item);
             }
 
-            // 2. Create and Save Transaction
             Transactions transaction = Transactions.builder()
                     .transactionType(TransactionType.SALE)
                     .totalAmount(saleRequest.getTotalAmount())
                     .transactionDate(OffsetDateTime.now())
                     .build();
 
-            // Link items
             Transactions finalTransaction = transaction;
             transactionItems.forEach(item -> item.setTransaction(finalTransaction));
             transaction.setTransactionItems(transactionItems);
 
             transaction = transactionsRepository.save(transaction);
 
-            // 3. Create and Save Payment
             Payment payment = Payment.builder()
                     .transaction(transaction)
-                    .paymentMethod(saleRequest.getPaymentMethod()) // Assuming DTO maps JSON string to Enum
+                    .paymentMethod(saleRequest.getPaymentMethod())
                     .amount(saleRequest.getTotalAmount())
                     .paymentDate(OffsetDateTime.now())
                     .build();
 
             payment = paymentRepository.save(payment);
 
-            // 4. Correct Enum Comparison
-            // We compare against the Enum constant directly
+            // This block is what we are debugging
             if (PaymentMethod.QR.equals(saleRequest.getPaymentMethod()) && saleRequest.getQrPaymentDetails() != null) {
+                System.out.println("SUCCESS: Entering QR Insert Block...");
                 QrPayment qrPayment = QrPayment.builder()
                         .payment(payment)
                         .terminalId(saleRequest.getQrPaymentDetails().getTerminalId())
@@ -97,6 +105,9 @@ public class PosController {
                         .build();
 
                 qrPaymentRepository.save(qrPayment);
+                System.out.println("SUCCESS: QrPayment Saved.");
+            } else {
+                System.out.println("SKIPPED: QR Insert block was not entered.");
             }
 
             return ResponseEntity.ok(Map.of(
@@ -106,6 +117,7 @@ public class PosController {
             ));
 
         } catch (Exception e) {
+            System.err.println("ERROR in completeSale: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "error", e.getMessage()));
