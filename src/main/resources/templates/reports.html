@@ -47,7 +47,6 @@
             <h5>Sales Reports</h5>
         </div>
         <div class="card-body">
-            <!-- Date Filter -->
             <form method="get" class="row g-3 mb-4">
                 <div class="col-md-4">
                     <label for="startDate" class="form-label">Start Date</label>
@@ -65,7 +64,6 @@
                 </div>
             </form>
 
-            <!-- Summary -->
             <div class="row mb-4">
                 <div class="col-md-4">
                     <div class="card text-white bg-primary">
@@ -85,7 +83,6 @@
                 </div>
             </div>
 
-            <!-- Transactions Table -->
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>
@@ -144,9 +141,7 @@
                                 </div>
                                 <div><strong>Status:</strong>
                                     <span th:text="${transaction.qrPaymentDetails.qrStatus}"
-                                          th:class="${transaction.qrPaymentDetails.qrStatus == 'COMPLETED'} ? 'badge bg-success' :
-                                              ${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' :
-                                              ${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'">
+                                          th:class="${transaction.qrPaymentDetails.qrStatus == 'COMPLETED'} ? 'badge bg-success' : (${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' : (${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'))">
                                         Status
                                     </span>
                                 </div>
