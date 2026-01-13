@@ -164,7 +164,6 @@
                                           th:data-index="${iter.index}"
                                           th:data-name="${item.productName}"
                                           th:data-quantity="${item.quantity}"
-                                          th:data-price="${item.productPrice}"
                                           th:data-subtotal="${item.subtotal}">
                                     </span>
                                 </div>
@@ -417,8 +416,8 @@
                 items.forEach((item, index) => {
                     const name = item.getAttribute('data-name');
                     const quantity = item.getAttribute('data-quantity');
-                    const price = parseFloat(item.getAttribute('data-price')).toFixed(2);
                     const subtotal = parseFloat(item.getAttribute('data-subtotal'));
+                    const unitPrice = subtotal / parseInt(quantity);
 
                     itemsTotal += subtotal;
 
@@ -427,7 +426,7 @@
                         <td>${index + 1}</td>
                         <td>${name}</td>
                         <td>${quantity}</td>
-                        <td>$${price}</td>
+                        <td>$${unitPrice.toFixed(2)}</td>
                         <td>$${subtotal.toFixed(2)}</td>
                     `;
                     itemsList.appendChild(row);
