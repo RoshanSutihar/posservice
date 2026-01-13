@@ -83,14 +83,6 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <div class="card text-white bg-info">
-                        <div class="card-body">
-                            <h5>QR Payments</h5>
-                            <h3 th:text="${#aggregates.sum(transactions.![qrPaymentDetails != null ? 1 : 0])}">0</h3>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- Transactions Table -->
