@@ -27,6 +27,7 @@
             padding: 2px 6px;
             border-radius: 4px;
             transition: all 0.2s;
+            font-size: 0.85em;
         }
         .eye-btn:hover {
             color: #0d6efd;
@@ -42,6 +43,19 @@
             font-weight: bold;
             color: #495057;
             width: 120px;
+        }
+        .items-table {
+            font-size: 0.9em;
+        }
+        .items-table th {
+            font-weight: 600;
+            background-color: #f8f9fa;
+        }
+        .items-count {
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 0.85em;
         }
     </style>
 </head>
@@ -136,13 +150,27 @@
                             </span>
                         </td>
                         <td>
-                            <div th:each="item : ${transaction.transactionItems}">
-                                <small th:text="${item.productName} + ' x ' + ${item.quantity} + ' - $' + ${#numbers.formatDecimal(item.subtotal, 1, 2)}">
-                                    Item details
-                                </small>
+                            <div th:if="${not #lists.isEmpty(transaction.transactionItems)}">
+                                <span class="items-count" th:text="${transaction.transactionItems.size()} + ' items'"></span>
+                                <button type="button" class="eye-btn ms-2"
+                                        th:attr="data-bs-toggle='modal', data-bs-target='#itemsDetailsModal',
+                                                data-transactionid=${transaction.id},
+                                                data-date=${#temporals.format(transaction.transactionDate, 'yyyy-MM-dd HH:mm')},
+                                                data-total=${transaction.totalAmount}">
+                                    <i class="bi bi-eye"></i> View Items
+                                </button>
+                                <div th:id="'itemsData-' + ${transaction.id}" style="display: none;">
+                                    <span th:each="item,iter : ${transaction.transactionItems}"
+                                          th:data-index="${iter.index}"
+                                          th:data-name="${item.productName}"
+                                          th:data-quantity="${item.quantity}"
+                                          th:data-price="${item.productPrice}"
+                                          th:data-subtotal="${item.subtotal}">
+                                    </span>
+                                </div>
                             </div>
-                            <div th:if="${#lists.isEmpty(transaction.transactionItems)}">
-                                <small class="text-muted">No items</small>
+                            <div th:if="${#lists.isEmpty(transaction.transactionItems)}" class="text-muted">
+                                <small>No items</small>
                             </div>
                         </td>
                         <td>
@@ -157,7 +185,7 @@
                                                 data-status=${transaction.qrPaymentDetails.qrStatus},
                                                 data-amount=${transaction.totalAmount},
                                                 data-date=${#temporals.format(transaction.transactionDate, 'yyyy-MM-dd HH:mm')}">
-                                    <i class="bi bi-eye"></i> View
+                                    <i class="bi bi-eye"></i> View QR
                                 </button>
                             </div>
                             <div th:if="${transaction.qrPaymentDetails == null}" class="text-muted">
@@ -170,6 +198,78 @@
                     </tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Items Details Modal -->
+<div class="modal fade" id="itemsDetailsModal" tabindex="-1" aria-labelledby="itemsDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="itemsDetailsModalLabel">Transaction Items</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6>Transaction Info</h6>
+                                <table class="qr-details-table">
+                                    <tr>
+                                        <td class="label">Transaction ID:</td>
+                                        <td id="itemsModalTransactionId">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="label">Date:</td>
+                                        <td id="itemsModalTransactionDate">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="label">Total Amount:</td>
+                                        <td id="itemsModalTransactionTotal">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="label">Items Count:</td>
+                                        <td id="itemsModalItemsCount">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <h6>Items List</h6>
+                        <div class="table-responsive">
+                            <table class="table items-table">
+                                <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Product Name</th>
+                                    <th>Quantity</th>
+                                    <th>Unit Price</th>
+                                    <th>Subtotal</th>
+                                </tr>
+                                </thead>
+                                <tbody id="itemsModalItemsList">
+                                <!-- Items will be populated here -->
+                                </tbody>
+                                <tfoot>
+                                <tr>
+                                    <td colspan="4" class="text-end fw-bold">Total:</td>
+                                    <td class="fw-bold" id="itemsModalItemsTotal">$0.00</td>
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -252,8 +352,8 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // QR Details Modal
         const qrDetailsModal = document.getElementById('qrDetailsModal');
-
         if (qrDetailsModal) {
             qrDetailsModal.addEventListener('show.bs.modal', function (event) {
                 const button = event.relatedTarget;
@@ -288,6 +388,52 @@
                 } else {
                     statusElement.classList.add('bg-secondary');
                 }
+            });
+        }
+
+        // Items Details Modal
+        const itemsDetailsModal = document.getElementById('itemsDetailsModal');
+        if (itemsDetailsModal) {
+            itemsDetailsModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const transactionId = button.getAttribute('data-transactionid');
+                const date = button.getAttribute('data-date');
+                const total = button.getAttribute('data-total');
+
+                document.getElementById('itemsModalTransactionId').textContent = transactionId;
+                document.getElementById('itemsModalTransactionDate').textContent = date;
+                document.getElementById('itemsModalTransactionTotal').textContent = '$' + parseFloat(total).toFixed(2);
+
+                const itemsContainer = document.getElementById('itemsData-' + transactionId);
+                const items = itemsContainer.querySelectorAll('span');
+
+                document.getElementById('itemsModalItemsCount').textContent = items.length + ' items';
+
+                const itemsList = document.getElementById('itemsModalItemsList');
+                itemsList.innerHTML = '';
+
+                let itemsTotal = 0;
+
+                items.forEach((item, index) => {
+                    const name = item.getAttribute('data-name');
+                    const quantity = item.getAttribute('data-quantity');
+                    const price = parseFloat(item.getAttribute('data-price')).toFixed(2);
+                    const subtotal = parseFloat(item.getAttribute('data-subtotal'));
+
+                    itemsTotal += subtotal;
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${name}</td>
+                        <td>${quantity}</td>
+                        <td>$${price}</td>
+                        <td>$${subtotal.toFixed(2)}</td>
+                    `;
+                    itemsList.appendChild(row);
+                });
+
+                document.getElementById('itemsModalItemsTotal').textContent = '$' + itemsTotal.toFixed(2);
             });
         }
     });
