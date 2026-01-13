@@ -145,9 +145,8 @@
                                 <div><strong>Status:</strong>
                                     <span th:text="${transaction.qrPaymentDetails.qrStatus}"
                                           th:class="${transaction.qrPaymentDetails.qrStatus == 'COMPLETED'} ? 'badge bg-success' :
-                                                   ${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' :
-                                                   ${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'"
-                                          style="font-size: 0.7em;">
+                                              ${transaction.qrPaymentDetails.qrStatus == 'PENDING'} ? 'badge bg-warning' :
+                                              ${transaction.qrPaymentDetails.qrStatus == 'FAILED'} ? 'badge bg-danger' : 'badge bg-secondary'">
                                         Status
                                     </span>
                                 </div>
