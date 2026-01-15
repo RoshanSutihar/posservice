@@ -32,10 +32,6 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authz -> authz
                         // Public endpoints (no authentication required)
                         .requestMatchers(
-                                "/login",
-                                "/oauth2/**",
-                                "/error",
-                                "/webjars/**",
                                 "/css/**",
                                 "/js/**",
                                 "/images/**"
@@ -51,7 +47,7 @@ public class SecurityConfig {
                         .requestMatchers("/store/**").hasAnyRole("ADMIN")
 
                         // POS page - accessible to cashiers and above
-                        .requestMatchers("/complete-sale").hasAnyRole("CASHIER", "MANAGER", "ADMIN")
+                        .requestMatchers("/complete-sale").hasAnyRole( "ADMIN")
 
                         // Deny everything else (require authentication)
                         .anyRequest().authenticated()
