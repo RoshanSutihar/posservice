@@ -43,17 +43,9 @@ public class PosController {
     @ResponseBody
     @Transactional
     public ResponseEntity<?> completeSale(@RequestBody SaleRequest saleRequest) {
-        // --- LOGGING START ---
-        System.out.println("====== SALE ATTEMPT LOG ======");
-        System.out.println("Payment Method Received: " + saleRequest.getPaymentMethod());
-        System.out.println("Is QR Method? " + (PaymentMethod.QR.equals(saleRequest.getPaymentMethod())));
-        System.out.println("QR Details Object null? " + (saleRequest.getQrPaymentDetails() == null));
-
         if (saleRequest.getQrPaymentDetails() != null) {
             System.out.println("Ref inside Details: " + saleRequest.getQrPaymentDetails().getTransactionReference());
         }
-        System.out.println("==============================");
-        // --- LOGGING END ---
 
         try {
             List<TransactionItem> transactionItems = new ArrayList<>();

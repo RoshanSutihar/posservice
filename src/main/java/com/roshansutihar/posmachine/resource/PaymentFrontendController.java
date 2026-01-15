@@ -166,7 +166,7 @@ public class PaymentFrontendController {
         }
     }
 
-    // Optional: Add a configuration endpoint
+
     @GetMapping("/config")
     public ResponseEntity<?> getPaymentConfig() {
         try {
