@@ -23,10 +23,21 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/payments")
 public class PaymentFrontendController {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentFrontendController.class);
+
+    // HARDCODED PAYMENT GATEWAY URL
+    private static final String HARDCODED_GATEWAY_BASE_URL = "http://payments.roshansutihar.com.np:2011";
+    private static final String HARDCODED_TERMINAL_ID = "DEFAULT_TERMINAL";
 
     private final StoreInfoRepository storeInfoRepository;
     private final RestTemplate restTemplate;
@@ -37,11 +48,60 @@ public class PaymentFrontendController {
         this.restTemplate = restTemplate;
     }
 
-    @PostMapping("/initiate-qr")
-    public ResponseEntity<?> initiateQrPayment(@RequestBody Map<String, Object> requestBody) {
+    @GetMapping("/config")
+    public ResponseEntity<?> getPaymentConfig() {
+        log.info("=== GET PAYMENT CONFIG FROM FRONTEND CONTROLLER ===");
+
         try {
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
-                    .orElseThrow(() -> new RuntimeException("Store configuration missing"));
+                    .orElseThrow(() -> {
+                        log.error("Store configuration not found in DB");
+                        return new RuntimeException("Store configuration missing");
+                    });
+
+            log.info("Database values:");
+            log.info("- Merchant ID: {}", store.getMerchantId());
+            log.info("- API URL in DB: {}", store.getApiUrl());
+            log.info("- Terminal ID in DB: {}", store.getTerminalId());
+
+            Map<String, Object> config = new HashMap<>();
+            config.put("merchantId", store.getMerchantId());
+
+            // IMPORTANT: Return stored API URL for display
+            config.put("apiUrl", store.getApiUrl());
+
+            // Use hardcoded terminal ID if not in DB
+            String terminalId = store.getTerminalId() != null ? store.getTerminalId() : HARDCODED_TERMINAL_ID;
+            config.put("terminalId", terminalId);
+
+            log.info("Returning config: merchantId={}, terminalId={}, apiUrl={}",
+                    store.getMerchantId(), terminalId, store.getApiUrl());
+
+            return ResponseEntity.ok(config);
+
+        } catch (Exception e) {
+            log.error("Error loading config: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to load configuration: " + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/initiate-qr")
+    public ResponseEntity<?> initiateQrPayment(@RequestBody Map<String, Object> requestBody) {
+        log.info("=== INITIATE QR PAYMENT ===");
+        log.info("Request body: {}", requestBody);
+
+        try {
+            StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
+                    .orElseThrow(() -> {
+                        log.error("Store configuration missing from database");
+                        return new RuntimeException("Store configuration missing");
+                    });
+
+            log.info("Store configuration loaded:");
+            log.info("- Merchant ID: {}", store.getMerchantId());
+            log.info("- Terminal ID: {}", store.getTerminalId());
+            log.info("- Secret Key exists: {}", store.getSecretKey() != null);
 
             // Prepare data for signature
             Map<String, Object> ordered = new LinkedHashMap<>();
@@ -53,6 +113,8 @@ public class PaymentFrontendController {
             String jsonString = new ObjectMapper().writeValueAsString(ordered);
             String dataToSign = store.getMerchantId() + jsonString;
 
+            log.info("Data to sign: {}", dataToSign);
+
             // Generate HMAC-SHA256 signature
             Mac mac = Mac.getInstance("HmacSHA256");
             SecretKeySpec secretKeySpec = new SecretKeySpec(
@@ -60,6 +122,12 @@ public class PaymentFrontendController {
             mac.init(secretKeySpec);
             byte[] signatureBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
             String signature = Base64.getEncoder().encodeToString(signatureBytes);
+
+            log.info("Generated signature: {}", signature);
+
+            // IMPORTANT: Use HARDCODED URL for gateway call
+            String gatewayUrl = HARDCODED_GATEWAY_BASE_URL + "/api/v1/payments/initiate";
+            log.info("Using HARDCODED gateway URL: {}", gatewayUrl);
 
             // Forward request to real payment gateway
             HttpHeaders headers = new HttpHeaders();
@@ -69,25 +137,37 @@ public class PaymentFrontendController {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            String gatewayUrl = "http://payments.roshansutihar.com.np:2011/api/v1/payments/initiate";
+            log.info("Sending request to gateway...");
             ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
+
+            log.info("Gateway response status: {}", gatewayResponse.getStatusCode());
+            log.info("Gateway response body: {}", gatewayResponse.getBody());
 
             return ResponseEntity.status(gatewayResponse.getStatusCode())
                     .body(gatewayResponse.getBody());
 
         } catch (Exception e) {
+            log.error("Error initiating QR payment: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("success", false, "message", e.getMessage()));
+                    .body(Map.of("success", false, "message", "Failed to initiate payment: " + e.getMessage()));
         }
     }
 
     @GetMapping("/status/{sessionId}")
     public ResponseEntity<?> checkPaymentStatus(@PathVariable String sessionId) {
+        log.info("=== CHECK PAYMENT STATUS ===");
+        log.info("Session ID: {}", sessionId);
+
         try {
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
-                    .orElseThrow(() -> new RuntimeException("Store configuration missing"));
+                    .orElseThrow(() -> {
+                        log.error("Store configuration missing from database");
+                        return new RuntimeException("Store configuration missing");
+                    });
 
-            String gatewayUrl = "http://payments.roshansutihar.com.np:2011/api/v1/payments/status/" + sessionId;
+            // IMPORTANT: Use HARDCODED URL for status check
+            String gatewayUrl = HARDCODED_GATEWAY_BASE_URL + "/api/v1/payments/status/" + sessionId;
+            log.info("Using HARDCODED gateway URL: {}", gatewayUrl);
 
             // Prepare headers for signature (if needed)
             HttpHeaders headers = new HttpHeaders();
@@ -99,6 +179,8 @@ public class PaymentFrontendController {
                 String timestamp = String.valueOf(System.currentTimeMillis());
                 String dataToSign = store.getMerchantId() + sessionId + timestamp;
 
+                log.info("Data to sign for status check: {}", dataToSign);
+
                 Mac mac = Mac.getInstance("HmacSHA256");
                 SecretKeySpec secretKeySpec = new SecretKeySpec(
                         Base64.getDecoder().decode(store.getSecretKey()), "HmacSHA256");
@@ -109,11 +191,14 @@ public class PaymentFrontendController {
                 headers.set("X-Merchant-ID", store.getMerchantId());
                 headers.set("X-Timestamp", timestamp);
                 headers.set("X-Signature", signature);
+
+                log.info("Added authentication headers for status check");
             }
 
             HttpEntity<?> entity = new HttpEntity<>(headers);
 
             try {
+                log.info("Sending status check request...");
                 ResponseEntity<Map> gatewayResponse = restTemplate.exchange(
                         gatewayUrl,
                         HttpMethod.GET,
@@ -121,15 +206,19 @@ public class PaymentFrontendController {
                         Map.class
                 );
 
+                log.info("Gateway response status: {}", gatewayResponse.getStatusCode());
+                log.info("Gateway response body: {}", gatewayResponse.getBody());
+
                 if (gatewayResponse.getStatusCode().is2xxSuccessful() && gatewayResponse.getBody() != null) {
                     Map<String, Object> responseBody = gatewayResponse.getBody();
 
-                    // Add some debugging info if needed
+                    // Add debugging info
                     responseBody.put("_checkedAt", new Date().toString());
                     responseBody.put("_gatewayUrl", gatewayUrl);
 
                     return ResponseEntity.ok(responseBody);
                 } else {
+                    log.warn("Gateway returned non-success status: {}", gatewayResponse.getStatusCode());
                     return ResponseEntity.status(gatewayResponse.getStatusCode())
                             .body(Map.of(
                                     "error", "Gateway returned error",
@@ -139,7 +228,7 @@ public class PaymentFrontendController {
                 }
 
             } catch (HttpClientErrorException | HttpServerErrorException e) {
-                // Handle HTTP errors
+                log.error("HTTP error checking status: {}", e.getStatusCode(), e);
                 return ResponseEntity.status(e.getStatusCode())
                         .body(Map.of(
                                 "error", "Gateway error: " + e.getStatusText(),
@@ -147,7 +236,7 @@ public class PaymentFrontendController {
                                 "details", e.getResponseBodyAsString()
                         ));
             } catch (ResourceAccessException e) {
-                // Handle connection errors
+                log.error("Connection error checking status: ", e);
                 return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                         .body(Map.of(
                                 "error", "Cannot connect to payment gateway",
@@ -157,31 +246,12 @@ public class PaymentFrontendController {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Internal error checking payment status: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of(
                             "error", "Internal server error: " + e.getMessage(),
                             "status", "ERROR"
                     ));
-        }
-    }
-
-
-    @GetMapping("/config")
-    public ResponseEntity<?> getPaymentConfig() {
-        try {
-            StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
-                    .orElseThrow(() -> new RuntimeException("Store configuration missing"));
-
-            Map<String, Object> config = new HashMap<>();
-            config.put("merchantId", store.getMerchantId());
-            config.put("apiUrl", "http://payments.roshansutihar.com.np:2011");
-            config.put("terminalId", "DEFAULT_TERMINAL"); // You might want to store this separately
-
-            return ResponseEntity.ok(config);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Failed to load configuration: " + e.getMessage()));
         }
     }
 }
