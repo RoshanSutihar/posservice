@@ -7,6 +7,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.oidc.user.OidcUserAuthority;
+
+import java.util.*;
 
 @Configuration
 @EnableWebSecurity
@@ -14,46 +19,48 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+
         http
-                // Enable OAuth2 Login for Thymeleaf pages
                 .oauth2Login(oauth2 -> oauth2
                         .loginPage("/oauth2/authorization/keycloak")
                         .defaultSuccessUrl("/", true)
+                        .userInfoEndpoint(userInfo ->
+                                userInfo.userAuthoritiesMapper(userAuthoritiesMapper())
+                        )
                 )
 
-                // Enable OAuth2 Resource Server for API endpoints
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())
                         )
                 )
 
-                // Configure authorization rules
                 .authorizeHttpRequests(authz -> authz
-                        // Public endpoints (no authentication required)
+
+                        // Static resources
                         .requestMatchers(
                                 "/css/**",
                                 "/js/**",
-                                "/images/**"
+                                "/images/**",
+                                "/webjars/**"
                         ).permitAll()
 
-                        .requestMatchers("/").hasAnyRole("ADMIN")
+                        // Home page
+                        .requestMatchers("/").hasRole("ADMIN")
 
+                        // API endpoints (JWT)
                         .requestMatchers("/api/**").authenticated()
 
-                        // Thymeleaf pages - different roles
-                        .requestMatchers("/products/**").hasAnyRole( "ADMIN")
-                        .requestMatchers("/reports/**").hasAnyRole( "ADMIN")
-                        .requestMatchers("/store/**").hasAnyRole("ADMIN")
+                        // Thymeleaf pages
+                        .requestMatchers("/products/**").hasRole("ADMIN")
+                        .requestMatchers("/reports/**").hasRole("ADMIN")
+                        .requestMatchers("/store/**").hasRole("ADMIN")
+                        .requestMatchers("/complete-sale").hasRole("ADMIN")
 
-                        // POS page - accessible to cashiers and above
-                        .requestMatchers("/complete-sale").hasAnyRole( "ADMIN")
-
-                        // Deny everything else (require authentication)
+                        // Everything else
                         .anyRequest().authenticated()
                 )
 
-                // Logout configuration
                 .logout(logout -> logout
                         .logoutSuccessUrl("/")
                         .invalidateHttpSession(true)
@@ -61,8 +68,7 @@ public class SecurityConfig {
                         .deleteCookies("JSESSIONID")
                 )
 
-                // Exception handling
-                .exceptionHandling(exceptions -> exceptions
+                .exceptionHandling(ex -> ex
                         .accessDeniedPage("/access-denied")
                 );
 
@@ -70,14 +76,74 @@ public class SecurityConfig {
     }
 
     @Bean
+    public org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper userAuthoritiesMapper() {
+        return authorities -> {
+            Set<GrantedAuthority> mappedAuthorities = new HashSet<>();
+
+            authorities.forEach(authority -> {
+
+                if (authority instanceof OidcUserAuthority oidcAuthority) {
+                    Map<String, Object> claims =
+                            oidcAuthority.getUserInfo().getClaims();
+
+                    // ---- REALM ROLES ----
+                    Map<String, Object> realmAccess =
+                            (Map<String, Object>) claims.get("realm_access");
+
+                    if (realmAccess != null) {
+                        List<String> roles =
+                                (List<String>) realmAccess.get("roles");
+
+                        roles.forEach(role ->
+                                mappedAuthorities.add(
+                                        new SimpleGrantedAuthority(
+                                                "ROLE_" + role.toUpperCase()
+                                        )
+                                )
+                        );
+                    }
+                }
+            });
+
+            return mappedAuthorities;
+        };
+    }
+
+    @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("roles");
 
-        JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
-        jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
+        JwtGrantedAuthoritiesConverter authoritiesConverter =
+                new JwtGrantedAuthoritiesConverter();
 
-        return jwtAuthenticationConverter;
+        // We handle roles manually
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+        authoritiesConverter.setAuthoritiesClaimName("realm_access.roles");
+
+        JwtAuthenticationConverter jwtConverter =
+                new JwtAuthenticationConverter();
+
+        jwtConverter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            Collection<GrantedAuthority> authorities = new ArrayList<>();
+
+            Map<String, Object> realmAccess =
+                    jwt.getClaim("realm_access");
+
+            if (realmAccess != null) {
+                List<String> roles =
+                        (List<String>) realmAccess.get("roles");
+
+                roles.forEach(role ->
+                        authorities.add(
+                                new SimpleGrantedAuthority(
+                                        "ROLE_" + role.toUpperCase()
+                                )
+                        )
+                );
+            }
+
+            return authorities;
+        });
+
+        return jwtConverter;
     }
 }
