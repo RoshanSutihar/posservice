@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 @RestController
 @RequestMapping("/api/config")
 public class PaymentConfigController {
@@ -28,19 +27,19 @@ public class PaymentConfigController {
         StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
                 .orElseThrow(() -> {
                     log.error("Store configuration not found in database");
-                    return new RuntimeException("Store configuration not found. Please set it up first.");
+                    return new RuntimeException("Store configuration not found.");
                 });
 
-        log.info("Database values retrieved:");
+        log.info("Database values:");
         log.info("- Merchant ID: {}", store.getMerchantId());
         log.info("- Terminal ID: {}", store.getTerminalId());
-        log.info("- API URL from DB (for display): {}", store.getApiUrl());
+        log.info("- API URL in DB: {}", store.getApiUrl());
 
         PaymentConfigDTO dto = new PaymentConfigDTO();
         dto.setMerchantId(store.getMerchantId());
         dto.setTerminalId(store.getTerminalId());
 
-        // Use stored API URL for display only
+        // Return stored API URL for display
         dto.setApiUrl(store.getApiUrl());
 
         log.info("Returning DTO with stored API URL for display");
