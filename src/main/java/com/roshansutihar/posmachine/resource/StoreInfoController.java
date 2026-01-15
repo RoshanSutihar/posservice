@@ -97,7 +97,7 @@ public class StoreInfoController {
             return "********";
         }
 
-        // Show first 4 and last 4 characters, mask the middle
+
         String firstFour = secretKey.substring(0, 4);
         String lastFour = secretKey.substring(secretKey.length() - 4);
         return firstFour + "********" + lastFour;

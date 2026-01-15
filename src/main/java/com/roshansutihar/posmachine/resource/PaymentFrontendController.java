@@ -69,7 +69,7 @@ public class PaymentFrontendController {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/initiate";
+            String gatewayUrl = "http://payments.roshansutihar.com.np:2011/api/v1/payments/initiate";
             ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
 
             return ResponseEntity.status(gatewayResponse.getStatusCode())
