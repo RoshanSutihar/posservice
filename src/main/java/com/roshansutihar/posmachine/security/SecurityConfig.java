@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -76,34 +77,38 @@ public class SecurityConfig {
     }
 
     @Bean
-    public org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper userAuthoritiesMapper() {
-        return authorities -> {
+    public GrantedAuthoritiesMapper userAuthoritiesMapper() {
+        return (authorities) -> {
             Set<GrantedAuthority> mappedAuthorities = new HashSet<>();
 
-            authorities.forEach(authority -> {
+            for (GrantedAuthority authority : authorities) {
+                // Keep original authorities
+                mappedAuthorities.add(authority);
 
                 if (authority instanceof OidcUserAuthority oidcAuthority) {
-                    Map<String, Object> claims =
-                            oidcAuthority.getUserInfo().getClaims();
 
-                    // ---- REALM ROLES ----
-                    Map<String, Object> realmAccess =
-                            (Map<String, Object>) claims.get("realm_access");
+                    Map<String, Object> claims = oidcAuthority.getIdToken().getClaims();
 
-                    if (realmAccess != null) {
-                        List<String> roles =
-                                (List<String>) realmAccess.get("roles");
+                    // Check realm_access in ID token claims
+                    if (claims.containsKey("realm_access")) {
+                        Object realmAccessObj = claims.get("realm_access");
 
-                        roles.forEach(role ->
-                                mappedAuthorities.add(
-                                        new SimpleGrantedAuthority(
-                                                "ROLE_" + role.toUpperCase()
-                                        )
-                                )
-                        );
+                        if (realmAccessObj instanceof Map realmAccess) {
+                            @SuppressWarnings("unchecked")
+                            List<String> roles = (List<String>) realmAccess.get("roles");
+
+                            if (roles != null) {
+                                roles.forEach(role -> {
+                                    String roleWithPrefix = "ROLE_" + role.toUpperCase();
+                                    mappedAuthorities.add(
+                                            new SimpleGrantedAuthority(roleWithPrefix)
+                                    );
+                                });
+                            }
+                        }
                     }
                 }
-            });
+            }
 
             return mappedAuthorities;
         };
