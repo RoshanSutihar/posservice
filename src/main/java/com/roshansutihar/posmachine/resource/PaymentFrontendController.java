@@ -91,7 +91,11 @@ public class PaymentFrontendController {
         log.info("=== INITIATE QR PAYMENT ===");
         log.info("Request body: {}", requestBody);
 
+        String signature = null; // Declare signature here so it's accessible
+
         try {
+            // 1. Get store configuration
+            log.info("1. Fetching store configuration from database...");
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
                     .orElseThrow(() -> {
                         log.error("Store configuration missing from database");
@@ -102,54 +106,160 @@ public class PaymentFrontendController {
             log.info("- Merchant ID: {}", store.getMerchantId());
             log.info("- Terminal ID: {}", store.getTerminalId());
             log.info("- Secret Key exists: {}", store.getSecretKey() != null);
+            log.info("- Secret Key length: {}", store.getSecretKey() != null ? store.getSecretKey().length() : 0);
 
-            // Prepare data for signature
+            // 2. Validate required fields
+            if (store.getMerchantId() == null || store.getMerchantId().trim().isEmpty()) {
+                log.error("Merchant ID is null or empty");
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Merchant ID not configured"));
+            }
+
+            if (store.getSecretKey() == null || store.getSecretKey().trim().isEmpty()) {
+                log.error("Secret Key is null or empty");
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Secret Key not configured"));
+            }
+
+            // 3. Prepare data for signature
+            log.info("2. Preparing data for signature...");
             Map<String, Object> ordered = new LinkedHashMap<>();
             ordered.put("terminalId", requestBody.get("terminalId"));
             ordered.put("amount", requestBody.get("amount"));
             ordered.put("transactionRef", requestBody.get("transactionRef"));
             ordered.put("callbackUrl", requestBody.get("callbackUrl"));
 
+            log.info("Ordered map for signature: {}", ordered);
+
             String jsonString = new ObjectMapper().writeValueAsString(ordered);
             String dataToSign = store.getMerchantId() + jsonString;
 
+            log.info("JSON String: {}", jsonString);
             log.info("Data to sign: {}", dataToSign);
 
-            // Generate HMAC-SHA256 signature
-            Mac mac = Mac.getInstance("HmacSHA256");
-            SecretKeySpec secretKeySpec = new SecretKeySpec(
-                    Base64.getDecoder().decode(store.getSecretKey()), "HmacSHA256");
-            mac.init(secretKeySpec);
-            byte[] signatureBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
-            String signature = Base64.getEncoder().encodeToString(signatureBytes);
+            // 4. Generate HMAC-SHA256 signature
+            log.info("3. Generating HMAC-SHA256 signature...");
+            try {
+                Mac mac = Mac.getInstance("HmacSHA256");
+                SecretKeySpec secretKeySpec = new SecretKeySpec(
+                        Base64.getDecoder().decode(store.getSecretKey()), "HmacSHA256");
+                mac.init(secretKeySpec);
+                byte[] signatureBytes = mac.doFinal(dataToSign.getBytes(StandardCharsets.UTF_8));
+                signature = Base64.getEncoder().encodeToString(signatureBytes);
 
-            log.info("Generated signature: {}", signature);
+                log.info("Generated signature: {}", signature);
+                log.info("Signature length: {}", signature.length());
 
-            // IMPORTANT: Use HARDCODED URL for gateway call
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid Base64 secret key: {}", e.getMessage());
+                return ResponseEntity.badRequest()
+                        .body(Map.of("success", false, "message", "Invalid secret key format"));
+            } catch (Exception e) {
+                log.error("Error generating signature: ", e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Map.of("success", false, "message", "Error generating signature: " + e.getMessage()));
+            }
+
+            // Check if signature was generated successfully
+            if (signature == null) {
+                log.error("Signature generation failed - signature is null");
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Map.of("success", false, "message", "Signature generation failed"));
+            }
+
+            // 5. Prepare request to payment gateway
+            log.info("4. Preparing request to payment gateway...");
             String gatewayUrl = HARDCODED_GATEWAY_BASE_URL + "/api/v1/payments/initiate";
             log.info("Using HARDCODED gateway URL: {}", gatewayUrl);
 
-            // Forward request to real payment gateway
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Merchant-ID", store.getMerchantId());
             headers.set("X-Signature", signature);
 
+            log.info("Request headers:");
+            log.info("- Content-Type: application/json");
+            log.info("- X-Merchant-ID: {}", store.getMerchantId());
+            log.info("- X-Signature: [{} chars]", signature.length());
+
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            log.info("Request entity prepared. Body: {}", requestBody);
 
-            log.info("Sending request to gateway...");
-            ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
+            // 6. Send request to gateway
+            log.info("5. Sending request to gateway...");
+            try {
+                ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
 
-            log.info("Gateway response status: {}", gatewayResponse.getStatusCode());
-            log.info("Gateway response body: {}", gatewayResponse.getBody());
+                log.info("Gateway response received:");
+                log.info("- Status Code: {}", gatewayResponse.getStatusCode());
+                log.info("- Headers: {}", gatewayResponse.getHeaders());
+                log.info("- Body: {}", gatewayResponse.getBody());
 
-            return ResponseEntity.status(gatewayResponse.getStatusCode())
-                    .body(gatewayResponse.getBody());
+                if (gatewayResponse.getBody() == null) {
+                    log.warn("Gateway returned null body");
+                    return ResponseEntity.status(gatewayResponse.getStatusCode())
+                            .body(Map.of("success", false, "message", "Empty response from payment gateway"));
+                }
+
+                return ResponseEntity.status(gatewayResponse.getStatusCode())
+                        .body(gatewayResponse.getBody());
+
+            } catch (HttpClientErrorException e) {
+                log.error("HTTP Client Error (4xx): {}", e.getStatusCode());
+                log.error("Response body: {}", e.getResponseBodyAsString());
+                log.error("Error details: ", e);
+
+                try {
+                    // Try to parse error response
+                    Map errorResponse = new ObjectMapper().readValue(e.getResponseBodyAsString(), Map.class);
+                    return ResponseEntity.status(e.getStatusCode())
+                            .body(errorResponse);
+                } catch (Exception ex) {
+                    return ResponseEntity.status(e.getStatusCode())
+                            .body(Map.of(
+                                    "success", false,
+                                    "message", "Payment gateway error: " + e.getStatusText(),
+                                    "details", e.getResponseBodyAsString()
+                            ));
+                }
+
+            } catch (HttpServerErrorException e) {
+                log.error("HTTP Server Error (5xx): {}", e.getStatusCode());
+                log.error("Response body: {}", e.getResponseBodyAsString());
+                log.error("Error details: ", e);
+
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(Map.of(
+                                "success", false,
+                                "message", "Payment gateway server error",
+                                "details", e.getResponseBodyAsString()
+                        ));
+
+            } catch (ResourceAccessException e) {
+                log.error("Network/Connection Error: ", e);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.of(
+                                "success", false,
+                                "message", "Cannot connect to payment gateway",
+                                "details", e.getMessage()
+                        ));
+
+            } catch (Exception e) {
+                log.error("Unexpected error calling gateway: ", e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Map.of(
+                                "success", false,
+                                "message", "Unexpected error: " + e.getMessage()
+                        ));
+            }
 
         } catch (Exception e) {
-            log.error("Error initiating QR payment: ", e);
+            log.error("General error in initiate-qr: ", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("success", false, "message", "Failed to initiate payment: " + e.getMessage()));
+                    .body(Map.of(
+                            "success", false,
+                            "message", "Failed to initiate payment: " + e.getMessage()
+                    ));
         }
     }
 
