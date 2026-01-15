@@ -40,7 +40,7 @@ public class SecurityConfig {
 
         http
                 .csrf(csrf -> csrf
-                        .ignoringRequestMatchers("/api/**")
+                        .ignoringRequestMatchers("/api/**", "/complete-sale")
                 )
 
                 .oauth2Login(oauth2 -> oauth2
