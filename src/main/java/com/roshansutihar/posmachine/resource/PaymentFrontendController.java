@@ -87,7 +87,7 @@ public class PaymentFrontendController {
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
                     .orElseThrow(() -> new RuntimeException("Store configuration missing"));
 
-            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/status/" + sessionId;
+            String gatewayUrl = "http://payments.roshansutihar.com.np:2011/api/v1/payments/status/" + sessionId;
 
             // Prepare headers for signature (if needed)
             HttpHeaders headers = new HttpHeaders();

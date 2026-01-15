@@ -27,7 +27,7 @@ public class PaymentConfigController {
         PaymentConfigDTO dto = new PaymentConfigDTO();
         dto.setMerchantId(store.getMerchantId());
         dto.setTerminalId(store.getTerminalId());
-        dto.setApiUrl(store.getApiUrl());  // example: "http://localhost:8091" or real gateway url
+        dto.setApiUrl("http://payments.roshansutihar.com.np:2011");
 
         return ResponseEntity.ok(dto);
     }
