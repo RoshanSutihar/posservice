@@ -175,7 +175,7 @@ public class PaymentFrontendController {
 
             Map<String, Object> config = new HashMap<>();
             config.put("merchantId", store.getMerchantId());
-            config.put("apiUrl", store.getApiUrl());
+            config.put("apiUrl", "http://payments.roshansutihar.com.np:2011");
             config.put("terminalId", "DEFAULT_TERMINAL"); // You might want to store this separately
 
             return ResponseEntity.ok(config);
