@@ -37,9 +37,6 @@ public class PaymentFrontendController {
     private final StoreInfoRepository storeInfoRepository;
     private final RestTemplate restTemplate;
 
-    // YOUR EXACT HARCODED URL
-    private static final String HARCODED_GATEWAY_URL = "http://payments.roshansutihar.com.np:2011";
-
     @Autowired
     public PaymentFrontendController(StoreInfoRepository storeInfoRepository, RestTemplate restTemplate) {
         this.storeInfoRepository = storeInfoRepository;
@@ -78,8 +75,7 @@ public class PaymentFrontendController {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            // USE HARCODED URL INSTEAD OF store.getApiUrl()
-            String gatewayUrl = HARCODED_GATEWAY_URL + "/api/v1/payments/initiate";
+            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/initiate";
             ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
 
             return ResponseEntity.status(gatewayResponse.getStatusCode())
@@ -97,8 +93,7 @@ public class PaymentFrontendController {
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
                     .orElseThrow(() -> new RuntimeException("Store configuration missing"));
 
-            // USE HARCODED URL INSTEAD OF store.getApiUrl()
-            String gatewayUrl = HARCODED_GATEWAY_URL + "/api/v1/payments/status/" + sessionId;
+            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/status/" + sessionId;
 
             // Prepare headers for signature (if needed)
             HttpHeaders headers = new HttpHeaders();
@@ -186,11 +181,8 @@ public class PaymentFrontendController {
 
             Map<String, Object> config = new HashMap<>();
             config.put("merchantId", store.getMerchantId());
-
-            // Return stored API URL for display (whatever is in DB)
             config.put("apiUrl", store.getApiUrl());
-
-            config.put("terminalId", "DEFAULT_TERMINAL");
+            config.put("terminalId", "DEFAULT_TERMINAL"); // You might want to store this separately
 
             return ResponseEntity.ok(config);
         } catch (Exception e) {

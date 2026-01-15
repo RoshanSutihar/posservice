@@ -442,92 +442,67 @@
         }
     }
 
-function generateQRPayment() {
-    const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
-    const transactionRef = 'TXN_' + Date.now();
+    function generateQRPayment() {
+        const total = parseFloat(document.getElementById('total').textContent.replace('$', ''));
+        const transactionRef = 'TXN_' + Date.now();
 
-    const payload = {
-        amount: Number(total.toFixed(2)),
-        callbackUrl: window.location.origin + "/payment-callback",
-        terminalId: merchantConfig.terminalId,
-        transactionRef: transactionRef
-    };
+        const payload = {
+            amount: Number(total.toFixed(2)),
+            callbackUrl: window.location.origin + "/payment-callback",
+            terminalId: merchantConfig.terminalId,
+            transactionRef: transactionRef
+        };
 
-    console.log('Sending QR payment request:', payload);
+        fetch('/api/payments/initiate-qr', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('paymentStatus');
+            const qrCodeContainer = document.getElementById('qrCode');
+            qrCodeContainer.innerHTML = '';
 
-    fetch('/api/payments/initiate-qr', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        console.log('Response headers:', response.headers);
+            if (data.success === true) {
+                currentSessionId = data.sessionId;
 
-        if (!response.ok) {
-            console.error('HTTP error:', response.status, response.statusText);
-            return response.text().then(text => {
-                console.error('Error response text:', text);
-                try {
-                    return JSON.parse(text);
-                } catch {
-                    throw new Error(`HTTP ${response.status}: ${text.substring(0, 100)}`);
+                if (!data.qrData || typeof data.qrData !== 'string' || data.qrData.trim() === '') {
+                    qrCodeContainer.innerHTML = '<div class="text-danger">Server returned invalid QR data</div>';
+                    statusElement.className = 'alert alert-danger';
+                    statusElement.textContent = 'Server Error: Missing or invalid QR data';
+                    return;
                 }
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Payment response:', data);
 
-        const statusElement = document.getElementById('paymentStatus');
-        const qrCodeContainer = document.getElementById('qrCode');
-        qrCodeContainer.innerHTML = '';
+                const canvas = document.createElement('canvas');
+                qrCodeContainer.appendChild(canvas);
 
-        if (data.success === true || data.success === 'true') {
-            currentSessionId = data.sessionId;
-
-            if (!data.qrData || typeof data.qrData !== 'string' || data.qrData.trim() === '') {
-                const errorMsg = data.message || 'Server returned invalid QR data';
-                qrCodeContainer.innerHTML = '<div class="text-danger">' + errorMsg + '</div>';
+                QRCode.toCanvas(canvas, data.qrData, function (error) {
+                    if (error) {
+                        console.error('QR Code generation failed:', error);
+                        qrCodeContainer.innerHTML = `<div class="text-danger">Failed to generate QR code</div>`;
+                        statusElement.textContent = 'Failed to generate QR code';
+                    } else {
+                        statusElement.className = 'alert alert-info';
+                        statusElement.textContent = 'QR Code generated. Please scan to pay.';
+                        startPaymentChecking();
+                    }
+                });
+            } else {
                 statusElement.className = 'alert alert-danger';
-                statusElement.textContent = 'Server Error: ' + errorMsg;
-                console.error('Missing QR data:', data);
-                return;
+                statusElement.textContent = 'Failed to initiate payment: ' + (data.message || 'Unknown error');
+                stopPaymentChecking();
             }
-
-            const canvas = document.createElement('canvas');
-            qrCodeContainer.appendChild(canvas);
-
-            QRCode.toCanvas(canvas, data.qrData, function (error) {
-                if (error) {
-                    console.error('QR Code generation failed:', error);
-                    qrCodeContainer.innerHTML = `<div class="text-danger">Failed to generate QR code: ${error.message}</div>`;
-                    statusElement.textContent = 'Failed to generate QR code';
-                } else {
-                    statusElement.className = 'alert alert-info';
-                    statusElement.textContent = 'QR Code generated. Please scan to pay.';
-                    startPaymentChecking();
-                }
-            });
-        } else {
-            const errorMsg = data.message || data.error || 'Unknown error from server';
-            console.error('Payment failed:', data);
-            statusElement.className = 'alert alert-danger';
-            statusElement.textContent = 'Failed to initiate payment: ' + errorMsg;
+        })
+        .catch(error => {
+            console.error('Error initiating QR payment:', error);
+            document.getElementById('paymentStatus').className = 'alert alert-danger';
+            document.getElementById('paymentStatus').textContent = 'Error contacting payment service';
             stopPaymentChecking();
-        }
-    })
-    .catch(error => {
-        console.error('Error initiating QR payment:', error);
-        const statusElement = document.getElementById('paymentStatus');
-        statusElement.className = 'alert alert-danger';
-        statusElement.textContent = 'Error: ' + error.message;
-        stopPaymentChecking();
-    });
-}
+        });
+    }
 
     function startPaymentChecking() {
         stopPaymentChecking();
