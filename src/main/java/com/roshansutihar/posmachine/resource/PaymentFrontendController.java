@@ -37,6 +37,9 @@ public class PaymentFrontendController {
     private final StoreInfoRepository storeInfoRepository;
     private final RestTemplate restTemplate;
 
+    // Hardcoded API URL
+    private static final String HARDCODED_GATEWAY_URL = "http://payments.roshansutihar.com.np:2011";
+
     @Autowired
     public PaymentFrontendController(StoreInfoRepository storeInfoRepository, RestTemplate restTemplate) {
         this.storeInfoRepository = storeInfoRepository;
@@ -75,7 +78,8 @@ public class PaymentFrontendController {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/initiate";
+            // Use hardcoded URL instead of store.getApiUrl()
+            String gatewayUrl = HARDCODED_GATEWAY_URL + "/api/v1/payments/initiate";
             ResponseEntity<Map> gatewayResponse = restTemplate.postForEntity(gatewayUrl, entity, Map.class);
 
             return ResponseEntity.status(gatewayResponse.getStatusCode())
@@ -93,7 +97,8 @@ public class PaymentFrontendController {
             StoreInfo store = storeInfoRepository.findFirstByOrderByIdAsc()
                     .orElseThrow(() -> new RuntimeException("Store configuration missing"));
 
-            String gatewayUrl = store.getApiUrl() + "/api/v1/payments/status/" + sessionId;
+            // Use hardcoded URL instead of store.getApiUrl()
+            String gatewayUrl = HARDCODED_GATEWAY_URL + "/api/v1/payments/status/" + sessionId;
 
             // Prepare headers for signature (if needed)
             HttpHeaders headers = new HttpHeaders();
@@ -172,7 +177,6 @@ public class PaymentFrontendController {
         }
     }
 
-
     @GetMapping("/config")
     public ResponseEntity<?> getPaymentConfig() {
         try {
@@ -181,8 +185,9 @@ public class PaymentFrontendController {
 
             Map<String, Object> config = new HashMap<>();
             config.put("merchantId", store.getMerchantId());
-            config.put("apiUrl", store.getApiUrl());
-            config.put("terminalId", "DEFAULT_TERMINAL"); // You might want to store this separately
+            // Return hardcoded URL in config response
+            config.put("apiUrl", HARDCODED_GATEWAY_URL);
+            config.put("terminalId", "DEFAULT_TERMINAL");
 
             return ResponseEntity.ok(config);
         } catch (Exception e) {

@@ -27,6 +27,7 @@ import java.util.*;
 public class SecurityConfig {
 
     private final ClientRegistrationRepository clientRegistrationRepository;
+
     @Value("${LOGOUT_URL}")
     private String logoutUrl;
 
@@ -38,7 +39,10 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
         http
-                // ===== OIDC LOGIN (THYMELEAF UI) =====
+                .csrf(csrf -> csrf
+                        .ignoringRequestMatchers("/api/**")
+                )
+
                 .oauth2Login(oauth2 -> oauth2
                         .loginPage("/oauth2/authorization/keycloak")
                         .defaultSuccessUrl("/", true)
@@ -47,17 +51,18 @@ public class SecurityConfig {
                         )
                 )
 
-                // ===== JWT (API SUPPORT) =====
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())
                         )
                 )
 
-                // ===== AUTHORIZATION RULES =====
-                .authorizeHttpRequests(authz -> authz
+                // =========================
+                // AUTHORIZATION RULES
+                // =========================
+                .authorizeHttpRequests(auth -> auth
 
-                        // Static resources
+                        // Static assets
                         .requestMatchers(
                                 "/css/**",
                                 "/js/**",
@@ -65,20 +70,22 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
 
-                        // Home page
-                        .requestMatchers("/").hasRole("ADMIN")
 
-                        // Thymeleaf pages
+                        .requestMatchers("/api/payments/**").permitAll()
+
+                        .requestMatchers("/api/config/**").permitAll()
+
+                        // UI pages (ADMIN only)
+                        .requestMatchers("/").hasRole("ADMIN")
                         .requestMatchers("/products/**").hasRole("ADMIN")
                         .requestMatchers("/reports/**").hasRole("ADMIN")
                         .requestMatchers("/store-info/**").hasRole("ADMIN")
                         .requestMatchers("/complete-sale").hasRole("ADMIN")
 
-                        // Everything else
+                        // Everything else requires login
                         .anyRequest().authenticated()
                 )
 
-                // ===== LOGOUT =====
                 .logout(logout -> logout
                         .logoutUrl("/logout")
                         .logoutSuccessHandler(oidcLogoutSuccessHandler())
@@ -87,7 +94,9 @@ public class SecurityConfig {
                         .deleteCookies("JSESSIONID")
                 )
 
-                // ===== ACCESS DENIED =====
+                // =========================
+                // ACCESS DENIED
+                // =========================
                 .exceptionHandling(ex -> ex
                         .accessDeniedPage("/access-denied")
                 );
@@ -105,13 +114,13 @@ public class SecurityConfig {
 
             Set<GrantedAuthority> authorities = new HashSet<>();
 
-            // Extract realm roles from ID token
             Map<String, Object> realmAccess =
                     oidcUser.getIdToken().getClaim("realm_access");
 
             if (realmAccess != null) {
                 @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) realmAccess.get("roles");
+                List<String> roles =
+                        (List<String>) realmAccess.get("roles");
 
                 if (roles != null) {
                     roles.forEach(role ->
@@ -167,9 +176,14 @@ public class SecurityConfig {
 
         return converter;
     }
+
     private LogoutSuccessHandler oidcLogoutSuccessHandler() {
+
         OidcClientInitiatedLogoutSuccessHandler handler =
-                new OidcClientInitiatedLogoutSuccessHandler(clientRegistrationRepository);
+                new OidcClientInitiatedLogoutSuccessHandler(
+                        clientRegistrationRepository
+                );
+
         handler.setPostLogoutRedirectUri(logoutUrl);
         return handler;
     }
