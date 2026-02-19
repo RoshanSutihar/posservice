@@ -180,8 +180,12 @@
     let paymentCompletionData = null;
     let receiptModalInstance = null;
     let merchantConfig = null;
+    let notificationSound = null;
 
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize notification sound
+        notificationSound = new Audio('/static/sonictrimmedwav.wav');
+
         fetch('/api/payments/config')
             .then(response => {
                 if (!response.ok) {
@@ -228,7 +232,16 @@
         });
     });
 
+    function playNotificationSound() {
+        if (notificationSound) {
+            notificationSound.play().catch(error => {
+                console.log('Audio playback failed:', error);
+            });
+        }
+    }
+
     function showToast(message) {
+        playNotificationSound();
         const toast = document.createElement('div');
         toast.className = 'position-fixed bottom-0 end-0 p-3';
         toast.style.zIndex = '11';
