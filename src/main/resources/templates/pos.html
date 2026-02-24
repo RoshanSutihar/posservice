@@ -184,7 +184,7 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize notification sound
-        notificationSound = new Audio('/static/sonictrimmedwav.wav');
+        notificationSound = new Audio('/sonictrimmedwav.wav');
 
         fetch('/api/payments/config')
             .then(response => {
